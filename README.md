@@ -241,9 +241,15 @@ Build release ZIPs:
 npm run build
 ```
 
+Run the full release gate:
+
+```text
+npm run check
+```
+
 `npm run build:edge` writes `dist/tabpack-edge-<version>.zip`. `npm run build:chrome` writes `dist/tabpack-chrome-<version>.zip`. Generated ZIP files are ignored by git.
 
-Store ZIPs contain the contents of `extension/` at the ZIP root, with `manifest.json` directly inside the archive.
+Store ZIPs contain the contents of `extension/` at the ZIP root, with `manifest.json` directly inside the archive. The release gate checks version alignment, required scripts, CI wiring, ignored generated artifacts, removed report artifacts, and package entries before writing ZIPs.
 
 ## Contributing
 

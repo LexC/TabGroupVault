@@ -81,8 +81,9 @@ test("loads extension, summarizes popup, scans, selects, and previews CSV rows",
 
     await exportPage.locator(".tab-select input[type='checkbox']").first().uncheck();
     await expect(exportPage.locator("#selectedCount")).toHaveText("1");
-    await expect(exportPage.getByText("Status:")).toBeVisible();
-    await expect(exportPage.getByText("Not selected")).toBeVisible();
+    const deselectedPreview = exportPage.locator(".tab-preview-body").first();
+    await expect(deselectedPreview.getByText("Status:")).toBeVisible();
+    await expect(deselectedPreview.getByText("Not selected")).toBeVisible();
     const selectedPreview = exportPage.locator(".tab-preview-body").nth(1);
     await expect(selectedPreview.getByText("Title:")).toBeVisible();
     await expect(selectedPreview.getByText("File:")).toBeVisible();
@@ -93,22 +94,25 @@ test("loads extension, summarizes popup, scans, selects, and previews CSV rows",
     await expect(exportPage.getByRole("group", { name: "Filename conflict behavior" })).toBeVisible();
     await expect(exportPage.locator("#exportReportCsv")).not.toBeChecked();
     await expect(exportPage.getByRole("heading", { name: "Report CSV" })).toBeVisible();
-    await expect(exportPage.getByText("Status:")).toBeVisible();
-    await expect(exportPage.getByText("Not exported")).toBeVisible();
+    const reportPreview = exportPage.locator(".group-preview", {
+      has: exportPage.getByRole("heading", { name: "Report CSV" })
+    });
+    await expect(reportPreview.getByText("Status:")).toBeVisible();
+    await expect(reportPreview.getByText("Not exported")).toBeVisible();
 
     await exportPage.getByRole("button", { name: "Page title filenames" }).click();
     await expect(selectedPreview.getByText("TabPack/E2E Group/_two.html.html")).toBeVisible();
 
     await exportPage.getByLabel("CSV page index (.csv)").check();
-    await expect(exportPage.getByText("CSV mode:")).toBeVisible();
-    await expect(exportPage.getByText("Enable Export report CSV before exporting")).toBeVisible();
-    await expect(exportPage.getByText("CSV row:")).toBeVisible();
+    await expect(reportPreview.getByText("CSV mode:")).toBeVisible();
+    await expect(reportPreview.getByText("Enable Export report CSV before exporting")).toBeVisible();
+    await expect(selectedPreview.getByText("CSV row:")).toBeVisible();
     await expect(selectedPreview.getByText("Not exported")).toBeVisible();
 
     await exportPage.locator("#exportReportCsv").check();
-    await expect(exportPage.getByText("CSV file:")).toBeVisible();
-    await expect(exportPage.getByText("tab-groups.csv")).toBeVisible();
-    await expect(exportPage.getByText("Included")).toBeVisible();
+    await expect(reportPreview.getByText("CSV file:")).toBeVisible();
+    await expect(reportPreview.getByText("tab-groups.csv")).toBeVisible();
+    await expect(selectedPreview.getByText("Included")).toBeVisible();
     await expect(exportPage.getByText("selected_for_export=false")).toHaveCount(0);
     await expect(exportPage.getByText("selected_for_export=true")).toHaveCount(0);
   } finally {

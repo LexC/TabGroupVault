@@ -4,4 +4,4 @@ Release ZIP files are generated here by `npm run build`, `npm run build:edge`, o
 
 Generated archives are ignored by git. Each uploaded store ZIP should contain `manifest.json` at the ZIP root.
 
-Run `npm test` and `npm run validate` before generating release archives.
+Run `npm run check` before uploading release archives.

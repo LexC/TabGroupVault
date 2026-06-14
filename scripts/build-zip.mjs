@@ -2,7 +2,7 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync }
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateRawSync } from "node:zlib";
-import { validateExtension } from "./validate-extension.mjs";
+import { validateExtension, validatePackageEntries } from "./validate-extension.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
@@ -27,6 +27,11 @@ mkdirSync(distDir, { recursive: true });
 
 const manifest = JSON.parse(readFileSync(path.join(extensionDir, "manifest.json"), "utf8"));
 const entries = collectFiles(extensionDir);
+const packageEntryErrors = validatePackageEntries(entries.map((entry) => entry.zipPath));
+if (packageEntryErrors.length) {
+  console.error(packageEntryErrors.map((error) => `- ${error}`).join("\n"));
+  process.exit(1);
+}
 
 for (const name of targets) {
   const outputPath = path.join(distDir, `tabpack-${name}-${manifest.version}.zip`);

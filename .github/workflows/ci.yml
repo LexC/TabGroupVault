@@ -25,11 +25,5 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Run tests
-        run: npm test
-
-      - name: Validate extension
-        run: npm run validate
-
-      - name: Build release ZIPs
-        run: npm run build
+      - name: Run release checks
+        run: npm run check

@@ -10,8 +10,7 @@
 
 ## Static Checks
 
-- [ ] Run `npm run validate`.
-- [ ] Run `npm run build`.
+- [ ] Run `npm run check`.
 - [ ] Confirm `dist/tabpack-edge-<version>.zip` exists.
 - [ ] Confirm `dist/tabpack-chrome-<version>.zip` exists.
 - [ ] Inspect both ZIPs and confirm `manifest.json` is at the ZIP root.
