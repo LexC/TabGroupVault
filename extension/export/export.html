@@ -54,31 +54,51 @@
             </div>
           </fieldset>
 
-          <fieldset>
-            <legend>Destination</legend>
-            <div class="stack">
-              <button id="chooseFolderButton" type="button">Choose output folder</button>
-              <p id="selectedFolderText" class="status">No output folder selected.</p>
-              <label>
-                <input id="createRootFolder" type="checkbox" checked>
-                Create TabPack root folder inside selected output folder
-              </label>
-              <div id="fallbackPanel" class="status warning hidden">
-                <p id="fallbackMessage">Selected-folder export is unavailable.</p>
+          <fieldset class="output-fieldset">
+            <legend>Output</legend>
+            <div class="output-stack">
+              <div class="output-section">
+                <h3>Destination</h3>
+                <button id="chooseFolderButton" type="button">Choose folder</button>
+                <p id="selectedFolderText" class="status">No output folder selected.</p>
                 <label>
-                  <input id="useDownloadsFallback" type="checkbox">
-                  Use fallback export to Downloads/TabPack
+                  <input id="createRootFolder" type="checkbox" checked>
+                  Create TabPack folder
+                </label>
+                <div id="fallbackPanel" class="status warning hidden">
+                  <p id="fallbackMessage">Selected-folder export is unavailable.</p>
+                  <label>
+                    <input id="useDownloadsFallback" type="checkbox">
+                    Use fallback export to Downloads/TabPack
+                  </label>
+                </div>
+              </div>
+
+              <div class="output-section">
+                <h3>Report</h3>
+                <label>
+                  <input id="exportReportCsv" type="checkbox">
+                  Export report CSV
                 </label>
               </div>
-            </div>
-          </fieldset>
 
-          <fieldset>
-            <legend>Filename conflicts</legend>
-            <input id="conflictBehavior" type="hidden" value="uniquify">
-            <div class="button-group" role="group" aria-label="Filename conflict behavior">
-              <button type="button" data-conflict-value="uniquify" aria-pressed="true">Uniquify existing files</button>
-              <button type="button" data-conflict-value="overwrite" aria-pressed="false">Overwrite existing files</button>
+              <div class="output-section">
+                <h3>Filenames</h3>
+                <input id="filenameMode" type="hidden" value="numbered">
+                <div class="button-group" role="group" aria-label="Filename mode">
+                  <button type="button" data-filename-mode-value="numbered" aria-pressed="true">Numbered filenames</button>
+                  <button type="button" data-filename-mode-value="title" aria-pressed="false">Page title filenames</button>
+                </div>
+              </div>
+
+              <div class="output-section">
+                <h3>Existing files</h3>
+                <input id="conflictBehavior" type="hidden" value="uniquify">
+                <div class="button-group" role="group" aria-label="Filename conflict behavior">
+                  <button type="button" data-conflict-value="uniquify" aria-pressed="true">Uniquify existing files</button>
+                  <button type="button" data-conflict-value="overwrite" aria-pressed="false">Overwrite existing files</button>
+                </div>
+              </div>
             </div>
           </fieldset>
 

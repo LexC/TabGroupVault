@@ -89,15 +89,25 @@ test("loads extension, summarizes popup, scans, selects, and previews CSV rows",
     await expect(selectedPreview.getByText("TabPack/E2E Group/1.html")).toBeVisible();
     const selectedPreviewText = await selectedPreview.textContent();
     expect(selectedPreviewText.indexOf("Title:")).toBeLessThan(selectedPreviewText.indexOf("File:"));
-    await expect(exportPage.getByText("Export index and report")).toBeVisible();
-    await expect(exportPage.getByText("CSV rows:")).toBeVisible();
-    await expect(exportPage.getByText("1 selected page row(s)")).toBeVisible();
-    await expect(exportPage.getByText("tabpack-export-report.json")).toBeVisible();
+    await expect(exportPage.getByRole("group", { name: "Filename mode" })).toBeVisible();
+    await expect(exportPage.getByRole("group", { name: "Filename conflict behavior" })).toBeVisible();
+    await expect(exportPage.locator("#exportReportCsv")).not.toBeChecked();
+    await expect(exportPage.getByRole("heading", { name: "Report CSV" })).toBeVisible();
+    await expect(exportPage.getByText("Status:")).toBeVisible();
+    await expect(exportPage.getByText("Not exported")).toBeVisible();
+
+    await exportPage.getByRole("button", { name: "Page title filenames" }).click();
+    await expect(selectedPreview.getByText("TabPack/E2E Group/_two.html.html")).toBeVisible();
 
     await exportPage.getByLabel("CSV page index (.csv)").check();
+    await expect(exportPage.getByText("CSV mode:")).toBeVisible();
+    await expect(exportPage.getByText("Enable Export report CSV before exporting")).toBeVisible();
+    await expect(exportPage.getByText("CSV row:")).toBeVisible();
+    await expect(selectedPreview.getByText("Not exported")).toBeVisible();
+
+    await exportPage.locator("#exportReportCsv").check();
     await expect(exportPage.getByText("CSV file:")).toBeVisible();
     await expect(exportPage.getByText("tab-groups.csv")).toBeVisible();
-    await expect(exportPage.getByText("CSV row:")).toBeVisible();
     await expect(exportPage.getByText("Included")).toBeVisible();
     await expect(exportPage.getByText("selected_for_export=false")).toHaveCount(0);
     await expect(exportPage.getByText("selected_for_export=true")).toHaveCount(0);

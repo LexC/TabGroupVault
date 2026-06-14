@@ -14,7 +14,8 @@ It is built for people who use tab groups as working sets: research sessions, pr
 - Preserves browser tab-group order and tab order in deterministic numbered files.
 - Lets you deselect specific groups or tabs before export; everything eligible is selected by default.
 - Supports HTML, HTML + `_files` folders, MHTML, and CSV exports.
-- Writes a selected-page CSV index and a JSON export report with every export mode.
+- Optionally writes a selected-page CSV report alongside HTML and MHTML exports.
+- Lets you choose numbered filenames or sanitized page-title filenames.
 - Writes to a folder you choose with the File System Access API when available.
 - Remembers export settings and best-effort output folder access when the browser keeps permission.
 - Provides an explicit `Downloads/TabPack/` fallback when selected-folder export is unavailable.
@@ -37,7 +38,7 @@ Selected output folder/
       1_files/
 ```
 
-MHTML mode uses the same group folders with `.mhtml` files. Every mode writes `tab-groups.csv` and `tabpack-export-report.json` at the export root.
+MHTML mode uses the same group folders with `.mhtml` files. When the report option is enabled, TabPack writes `tab-groups.csv` at the export root.
 
 ## Install
 
@@ -55,7 +56,7 @@ TabPack is a Manifest V3 extension for Chromium-based browsers such as Microsoft
 2. Click the TabPack extension button.
 3. Click **Open TabPack**.
 4. Choose an export mode.
-5. Click **Choose output folder** and grant read/write access.
+5. Click **Choose folder** and grant read/write access.
 6. Click **Scan grouped tabs**.
 7. Review the preview, deselect any groups or tabs you do not want, and inspect skipped tabs.
 8. Click **Export grouped tabs**.
@@ -71,9 +72,9 @@ During a long export, click **Stop export** to stop before the next queued page 
 | HTML page + relevant assets | `1.html` + `1_files/` | The default mode. Saves direct page resources such as scripts, stylesheets, images, icons, media, frames, and `srcset` entries. |
 | HTML page + all assets | `1.html` + `1_files/` | A deeper archive that also follows stylesheet `url(...)` and `@import` references recursively. May save many files on large sites. |
 | MHTML page archives | `1.mhtml` | Single-file page archives using Chromium's official `chrome.pageCapture.saveAsMHTML` API. |
-| CSV page index | `tab-groups.csv` + `tabpack-export-report.json` | A selected-page index plus a full JSON export report without saving page content. |
+| CSV page index | `tab-groups.csv` | A selected-page index without saving page content. |
 
-Every export mode writes `tab-groups.csv` and `tabpack-export-report.json` at the export root. The CSV contains only selected page rows. The JSON report includes export settings, generated files, selected pages, deselected pages, skipped tabs, page results, failures, and asset warnings.
+The checkbox **Export report CSV** controls whether `tab-groups.csv` is written. It is off by default. CSV page index mode requires that checkbox because the CSV is the export output.
 
 In the relevant-assets mode, stylesheet-internal `url(...)` and `@import` references are kept as absolute web URLs instead of being followed recursively. The all-assets mode follows those references and can therefore save many more files.
 
@@ -92,11 +93,11 @@ CSV exports include export timestamp, export mode, group order, group name, grou
 
 ## Destination Folders
 
-The main export flow uses the File System Access API. Click **Choose output folder** and grant read/write access to the folder where TabPack should write files. Browsers expose the selected folder name to the extension, but not the full absolute path.
+The main export flow uses the File System Access API. Click **Choose folder** and grant read/write access to the folder where TabPack should write files. Browsers expose the selected folder name to the extension, but not the full absolute path.
 
-The checkbox **Create TabPack root folder inside selected output folder** is enabled by default. When enabled, group folders are created inside `TabPack/`. When disabled, group folders are written directly inside the selected folder.
+The checkbox **Create TabPack folder** is enabled by default. When enabled, group folders are created inside `TabPack/`. When disabled, group folders are written directly inside the selected folder.
 
-TabPack remembers export mode, filename-conflict behavior, fallback preference, and the root-folder checkbox with extension local storage. When the browser allows it, TabPack also remembers the selected output folder handle. If write permission is no longer granted when TabPack opens, choose the folder again.
+TabPack remembers export mode, filename mode, report CSV preference, filename-conflict behavior, fallback preference, and the root-folder checkbox with extension local storage. When the browser allows it, TabPack also remembers the selected output folder handle. If write permission is no longer granted when TabPack opens, choose the folder again.
 
 If `window.showDirectoryPicker()` is unavailable, blocked, or write permission is denied, TabPack shows a clearly labeled fallback option. The fallback writes to:
 
@@ -116,6 +117,13 @@ Page files are numbered by selected tab order inside each group. If a tab is des
 1.html
 2.html
 3.html
+```
+
+The filename mode can also use page titles. Title filenames are sanitized for Windows compatibility, trimmed to 80 characters before the extension, and uniquified inside each group:
+
+```text
+Example Page.html
+Example Page (1).html
 ```
 
 HTML asset modes create paired folders:
@@ -141,14 +149,7 @@ CSV mode writes the selected-page index instead of page content:
 tab-groups.csv
 ```
 
-Every mode also writes root-level export metadata:
-
-```text
-tab-groups.csv
-tabpack-export-report.json
-```
-
-Page titles are not used in filenames. By default, existing files are not overwritten. If `1.html` or `1_files/` already exists, TabPack writes `1 (1).html` and `1 (1)_files/`. An overwrite mode is available in the export screen, but it is not the default.
+By default, existing files are not overwritten. If `1.html` or `1_files/` already exists, TabPack writes `1 (1).html` and `1 (1)_files/`. An overwrite mode is available in the export screen, but it is not the default.
 
 ## Privacy
 
@@ -194,7 +195,8 @@ HTML export uses the standard `scripting` API when the browser exposes it to the
 
 - If **Export grouped tabs** is disabled, scan grouped tabs and choose an output folder first.
 - If every tab is deselected, select at least one tab before exporting.
-- If folder selection is canceled, click **Choose output folder** again.
+- If CSV page index export is disabled, enable **Export report CSV**.
+- If folder selection is canceled, click **Choose folder** again.
 - If write permission is denied, choose the folder again or select another folder.
 - If selected-folder export is unavailable, use the clearly labeled Downloads fallback.
 - If an HTML export asks for page access, grant the runtime HTTP/HTTPS permission so TabPack can serialize selected pages.

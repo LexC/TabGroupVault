@@ -6,7 +6,7 @@
 - [ ] Export selected grouped tabs to a custom folder.
 - [ ] Confirm each selected tab writes only `N.html`.
 - [ ] Confirm deselected tabs do not write files.
-- [ ] Confirm `tab-groups.csv` and `tabpack-export-report.json` are written at the export root.
+- [ ] Enable Export report CSV and confirm `tab-groups.csv` is written at the export root.
 
 ## HTML Relevant Assets
 
@@ -14,7 +14,7 @@
 - [ ] Export pages with scripts, stylesheets, images, and icons.
 - [ ] Confirm selected tabs write `N.html` plus matching `N_files/`.
 - [ ] Confirm stylesheet-internal `url(...)` and `@import` references may remain online URLs.
-- [ ] Confirm `tab-groups.csv` contains only selected page rows.
+- [ ] Enable Export report CSV and confirm `tab-groups.csv` contains only selected page rows.
 
 ## HTML All Assets
 
@@ -28,16 +28,25 @@
 - [ ] Export a simple public webpage.
 - [ ] Open the `.mhtml` file in Edge.
 - [ ] Retry with a complex page and confirm capture failures increment Failed while later tabs continue.
-- [ ] Confirm the JSON report includes page results and any failure details.
+- [ ] Enable Export report CSV and confirm selected MHTML pages are listed.
 
 ## CSV Index And Report
 
 - [ ] Select CSV page index.
+- [ ] Confirm Export grouped tabs is disabled while Export report CSV is unchecked.
+- [ ] Enable Export report CSV.
 - [ ] Deselect at least one eligible tab.
-- [ ] Export `tab-groups.csv` and `tabpack-export-report.json`.
+- [ ] Export `tab-groups.csv`.
 - [ ] Confirm `tab-groups.csv` includes selected pages only.
 - [ ] Confirm `tab-groups.csv` does not include `selected_for_export`, `skip_reason`, or `group_folder`.
-- [ ] Confirm the JSON report includes selected, deselected, and skipped tab sections.
+
+## Filename Modes
+
+- [ ] Keep Numbered filenames selected and confirm files use compact numbers.
+- [ ] Select Page title filenames.
+- [ ] Export pages with duplicate, long, and invalid-character titles.
+- [ ] Confirm title filenames are sanitized, trimmed, and uniquified.
+- [ ] Confirm HTML asset folders use the same title base with `_files`.
 
 ## Notes
 

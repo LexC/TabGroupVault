@@ -11,7 +11,9 @@
   const CSV_MODE = constants.CSV_MODE || "csv";
   const MHTML_MODE = constants.MHTML_MODE || "mhtml";
   const CSV_FILE_NAME = constants.CSV_FILE_NAME || "tab-groups.csv";
-  const EXPORT_REPORT_FILE_NAME = constants.EXPORT_REPORT_FILE_NAME || "tabpack-export-report.json";
+  const TITLE_FILENAME_LIMIT = constants.TITLE_FILENAME_LIMIT || 80;
+  const FILENAME_MODE_NUMBERED = "numbered";
+  const FILENAME_MODE_TITLE = "title";
   const OPTIONAL_HOST_ORIGINS = ["http://*/*", "https://*/*"];
 
   function collectTabGroupIds(tabs, options = {}) {
@@ -119,8 +121,7 @@
       totalDeselectedTabs: 0,
       csvFileName: CSV_FILE_NAME,
       csvRelativePath: "",
-      exportReportFileName: EXPORT_REPORT_FILE_NAME,
-      exportReportRelativePath: ""
+      filenameMode: FILENAME_MODE_NUMBERED
     };
 
     applyModeAndPaths(plan, options);
@@ -169,19 +170,22 @@
     const rootFolderName = options.rootFolderName || ROOT_FOLDER_NAME;
     const createRootFolder = options.createRootFolder !== false;
     const downloadsFallback = Boolean(options.downloadsFallback);
+    const filenameMode = options.filenameMode === FILENAME_MODE_TITLE
+      ? FILENAME_MODE_TITLE
+      : FILENAME_MODE_NUMBERED;
     const extension = mode === MHTML_MODE ? "mhtml" : "html";
 
     plan.mode = mode;
+    plan.filenameMode = filenameMode;
     plan.csvFileName = CSV_FILE_NAME;
     plan.csvRelativePath = buildRootRelativePath(CSV_FILE_NAME, { rootFolderName, createRootFolder, downloadsFallback });
-    plan.exportReportFileName = EXPORT_REPORT_FILE_NAME;
-    plan.exportReportRelativePath = buildRootRelativePath(EXPORT_REPORT_FILE_NAME, { rootFolderName, createRootFolder, downloadsFallback });
 
     let selectedTotal = 0;
     let eligibleTotal = 0;
 
     for (const group of plan.groups || []) {
       let selectedOrder = 0;
+      const usedBaseNames = new Set();
       eligibleTotal += group.files.length;
 
       for (const file of group.files) {
@@ -192,7 +196,10 @@
         if (isSelected) {
           selectedOrder += 1;
           file.selectedOrderInGroup = selectedOrder;
-          file.baseFileName = String(selectedOrder);
+          file.baseFileName = allocatePageBaseFileName(file, selectedOrder, usedBaseNames, {
+            filenameMode,
+            titleLimit: TITLE_FILENAME_LIMIT
+          });
           file.fileName = mode === CSV_MODE ? "" : `${file.baseFileName}.${extension}`;
           file.referenceAssetFolderName = mode !== CSV_MODE && (isHtmlLocalReferenceMode(mode) || isHtmlAssetMode(mode))
             ? `${file.baseFileName}_files`
@@ -249,6 +256,59 @@
     return fileName;
   }
 
+  function allocatePageBaseFileName(file, selectedOrder, usedBaseNames, options = {}) {
+    const numberedBase = String(selectedOrder);
+    const filenameMode = options.filenameMode === FILENAME_MODE_TITLE
+      ? FILENAME_MODE_TITLE
+      : FILENAME_MODE_NUMBERED;
+    const rawBaseName = filenameMode === FILENAME_MODE_TITLE
+      ? sanitizePageFileBaseName(file.title, options.titleLimit || TITLE_FILENAME_LIMIT)
+      : numberedBase;
+    const baseName = rawBaseName || numberedBase;
+    const key = baseName.toLowerCase();
+
+    if (!usedBaseNames.has(key)) {
+      usedBaseNames.add(key);
+      return baseName;
+    }
+
+    let counter = 1;
+    let candidate = appendFileNameSuffix(baseName, counter, options.titleLimit || TITLE_FILENAME_LIMIT);
+
+    while (usedBaseNames.has(candidate.toLowerCase())) {
+      counter += 1;
+      candidate = appendFileNameSuffix(baseName, counter, options.titleLimit || TITLE_FILENAME_LIMIT);
+    }
+
+    usedBaseNames.add(candidate.toLowerCase());
+    return candidate;
+  }
+
+  function appendFileNameSuffix(baseName, counter, maxLength) {
+    const suffix = ` (${counter})`;
+    const trimmedBase = trimPageFileBaseName(baseName, Math.max(1, maxLength - suffix.length)) || "Page";
+    return `${trimmedBase}${suffix}`;
+  }
+
+  function sanitizePageFileBaseName(input, maxLength = TITLE_FILENAME_LIMIT) {
+    let sanitized = String(input || "")
+      .replace(/[<>:"/\\|?*\x00-\x1F]/g, "_")
+      .trimStart()
+      .replace(/[.\s]+$/g, "");
+
+    if (isReservedWindowsName(sanitized)) {
+      sanitized = `${sanitized}_page`;
+    }
+
+    return trimPageFileBaseName(sanitized, maxLength);
+  }
+
+  function trimPageFileBaseName(fileName, maxLength = TITLE_FILENAME_LIMIT) {
+    return String(fileName)
+      .slice(0, maxLength)
+      .replace(/[.\s]+$/g, "");
+  }
+
   function generateCsvIndex(plan, options = {}) {
     const exportedAt = options.exportedAt || new Date().toISOString();
     const pageResults = new Map((options.pageResults || []).map((result) => {
@@ -302,105 +362,6 @@
     return (plan.groups || []).reduce((total, group) => {
       return total + group.files.filter((file) => file.selected).length;
     }, 0);
-  }
-
-  function generateExportReport(plan, options = {}) {
-    const exportedAt = options.exportedAt || new Date().toISOString();
-    const pageResults = new Map((options.pageResults || []).map((result) => {
-      return [result.selectionKey, result];
-    }));
-    const generatedFiles = Array.isArray(options.generatedFiles) ? options.generatedFiles : [];
-    const destination = options.destination || {};
-    const extensionVersion = options.extensionVersion || "";
-
-    return {
-      schemaVersion: 1,
-      application: {
-        name: "TabPack",
-        version: extensionVersion
-      },
-      exportedAt,
-      exportMode: plan.mode,
-      destination: {
-        type: destination.type || "",
-        label: destination.label || "",
-        rootFolderCreated: Boolean(destination.rootFolderCreated),
-        conflictBehavior: destination.conflictBehavior || "",
-        reportRelativePath: destination.reportRelativePath || ""
-      },
-      generatedFiles,
-      totals: {
-        eligibleTabs: plan.totalEligibleTabs || 0,
-        selectedTabs: plan.totalSelectedTabs || 0,
-        deselectedTabs: plan.totalDeselectedTabs || 0,
-        skippedTabs: (plan.skippedTabs || []).length,
-        successfulItems: options.successCount || 0,
-        failedItems: options.failureCount || 0,
-        assetWarnings: options.assetWarnings || 0
-      },
-      selectedPages: buildReportPages(plan, pageResults, true),
-      deselectedPages: buildReportPages(plan, pageResults, false),
-      skippedTabs: buildReportSkippedTabs(plan.skippedTabs || [])
-    };
-  }
-
-  function buildReportPages(plan, pageResults, selected) {
-    const pages = [];
-
-    for (const [groupIndex, group] of (plan.groups || []).entries()) {
-      for (const file of group.files) {
-        if (Boolean(file.selected) !== selected) {
-          continue;
-        }
-
-        const pageResult = pageResults.get(file.selectionKey) || {};
-        pages.push({
-          groupOrder: groupIndex + 1,
-          groupId: group.groupId,
-          groupName: group.originalTitle,
-          groupFolder: group.sanitizedFolderName,
-          tabOrderInGroup: file.order,
-          selectedOrderInGroup: file.selected ? file.selectedOrderInGroup : "",
-          tabIndex: file.tabIndex,
-          tabId: file.tabId,
-          pageTitle: file.title,
-          pageUrl: file.url,
-          plannedFilePath: file.plannedRelativePath,
-          plannedAssetFolderPath: file.plannedAssetFolderPath || file.plannedReferenceAssetFolderPath,
-          result: {
-            status: pageResult.status || getDefaultReportPageStatus(plan, file),
-            requestedFilePath: pageResult.requestedRelativePath || "",
-            finalFilePath: pageResult.finalRelativePath || "",
-            finalAssetFolderPath: pageResult.finalAssetFolderPath || "",
-            assetWarnings: pageResult.assetWarnings || 0,
-            error: pageResult.error || ""
-          }
-        });
-      }
-    }
-
-    return pages;
-  }
-
-  function getDefaultReportPageStatus(plan, file) {
-    if (!file.selected) {
-      return "deselected";
-    }
-
-    return plan.mode === CSV_MODE ? "indexed" : "not_started";
-  }
-
-  function buildReportSkippedTabs(skippedTabs) {
-    return skippedTabs.map((skippedTab) => ({
-      reason: skippedTab.reason || "",
-      groupId: skippedTab.groupId,
-      groupName: skippedTab.groupName || "",
-      groupFolder: skippedTab.groupFolder || "",
-      tabIndex: skippedTab.tabIndex,
-      tabId: skippedTab.tabId,
-      pageTitle: skippedTab.title || "",
-      pageUrl: skippedTab.url || ""
-    }));
   }
 
   function formatCsvCell(value) {
@@ -592,12 +553,12 @@
     buildRootRelativePath,
     generateCsvIndex,
     getSelectedCsvRowCount,
-    generateExportReport,
     formatCsvCell,
     cleanCsvPageTitle,
     summarizeTabs,
     assignUniqueFolderNames,
     sanitizeFolderName,
+    sanitizePageFileBaseName,
     isSupportedTabUrl,
     makeSelectionKey,
     isHtmlSnapshotMode,

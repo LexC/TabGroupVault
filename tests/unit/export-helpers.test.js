@@ -88,53 +88,36 @@ test("CSV index includes only selected rows in a readable order", () => {
   assert.equal(helpers.getSelectedCsvRowCount(plan), 1);
 });
 
-test("export report includes selected, deselected, skipped, and generated file details", () => {
-  const selectedKeys = new Set([helpers.makeSelectionKey(10, 2)]);
+test("title filename mode sanitizes, trims, falls back, and uniquifies names", () => {
+  const longTitle = "A".repeat(90);
+  const plan = helpers.buildExportPlanFromTabs([
+    { id: 1, groupId: 10, index: 0, title: "Bad<Name>... ", url: "https://example.com/a" },
+    { id: 2, groupId: 10, index: 1, title: "Bad<Name>... ", url: "https://example.com/b" },
+    { id: 3, groupId: 10, index: 2, title: "   ...", url: "https://example.com/c" },
+    { id: 4, groupId: 10, index: 3, title: longTitle, url: "https://example.com/d" }
+  ], new Map([[10, { id: 10, title: "Research" }]]), {
+    noGroupId: -1,
+    mode: constants.HTML_RELEVANT_ASSETS_MODE,
+    filenameMode: "title"
+  });
+
+  assert.equal(plan.groups[0].files[0].baseFileName, "Bad_Name_");
+  assert.equal(plan.groups[0].files[0].fileName, "Bad_Name_.html");
+  assert.equal(plan.groups[0].files[0].assetFolderName, "Bad_Name__files");
+  assert.equal(plan.groups[0].files[1].fileName, "Bad_Name_ (1).html");
+  assert.equal(plan.groups[0].files[2].fileName, "3.html");
+  assert.equal(plan.groups[0].files[3].baseFileName.length, 80);
+  assert.equal(plan.groups[0].files[3].fileName, `${"A".repeat(80)}.html`);
+});
+
+test("title filename mode keeps the selected export extension", () => {
   const plan = helpers.buildExportPlanFromTabs(sampleTabs(), sampleGroups(), {
     noGroupId: -1,
     mode: constants.MHTML_MODE,
-    selectedKeys
-  });
-  const report = helpers.generateExportReport(plan, {
-    exportedAt: "2026-06-14T00:00:00.000Z",
-    extensionVersion: "1.1.0",
-    destination: {
-      type: "selected-folder",
-      label: "selected folder/TabPack/",
-      rootFolderCreated: true,
-      conflictBehavior: "uniquify",
-      reportRelativePath: "TabPack/tabpack-export-report.json"
-    },
-    pageResults: [
-      {
-        selectionKey: helpers.makeSelectionKey(10, 2),
-        status: "saved",
-        finalRelativePath: "TabPack/Research/1.mhtml"
-      }
-    ],
-    generatedFiles: [
-      {
-        kind: "csv_index",
-        status: "saved",
-        finalRelativePath: "TabPack/tab-groups.csv",
-        rowCount: 1
-      }
-    ],
-    successCount: 2,
-    failureCount: 0,
-    assetWarnings: 0
+    filenameMode: "title"
   });
 
-  assert.equal(report.application.name, "TabPack");
-  assert.equal(report.application.version, "1.1.0");
-  assert.equal(report.totals.selectedTabs, 1);
-  assert.equal(report.totals.deselectedTabs, 2);
-  assert.equal(report.totals.skippedTabs, 2);
-  assert.equal(report.selectedPages.length, 1);
-  assert.equal(report.selectedPages[0].result.status, "saved");
-  assert.equal(report.deselectedPages.length, 2);
-  assert.equal(report.skippedTabs.length, 2);
-  assert.equal(report.generatedFiles[0].kind, "csv_index");
+  assert.equal(plan.groups[0].files[0].fileName, "Alpha.mhtml");
 });
 
 test("sanitizes reserved and invalid folder names", () => {
