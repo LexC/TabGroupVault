@@ -6,9 +6,24 @@ Do not mark browser testing complete unless this unpacked extension has been loa
 
 - [ ] Open `edge://extensions`.
 - [ ] Enable **Developer mode**.
-- [ ] Click **Load unpacked** and select the `TabGroupVault` project folder.
+- [ ] Click **Load unpacked** and select the `TabGroupVault/extension` folder.
 - [ ] Pin or open the TabGroupVault extension action.
-- [ ] Click **Open TabGroupVault** to open `archive.html`.
+- [ ] Click **Open TabGroupVault** to open `export/export.html`.
+
+Notes:
+
+```text
+
+```
+
+## Static And Packaging Checks
+
+- [ ] Run `npm run validate`.
+- [ ] Run `npm run build`.
+- [ ] Confirm `dist/tabgroupvault-edge-<version>.zip` exists.
+- [ ] Confirm `dist/tabgroupvault-chrome-<version>.zip` exists.
+- [ ] Inspect each ZIP and confirm `manifest.json` is at the ZIP root, not under `extension/`.
+- [ ] Confirm generated ZIP files are not staged for commit.
 
 Notes:
 
@@ -474,6 +489,20 @@ Notes:
 - [ ] Inspect the detailed log rows.
 
 Expected result: the progress panel shows the overall percentage and completed/total pages. Detailed log badges have a consistent width so messages start at the same horizontal position.
+
+Notes:
+
+```text
+
+```
+
+## 34. Stop Export
+
+- [ ] Export multiple grouped HTTP/HTTPS tabs using **HTML page + all assets (.html + _files)**.
+- [ ] Click **Stop export** while export is running.
+- [ ] Watch the progress panel and detailed log.
+
+Expected result: the Stop button disables after the stop request, in-flight asset fetches are aborted where the browser allows it, no new tab export starts, and the progress panel reports that export was stopped by the user.
 
 Notes:
 

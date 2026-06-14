@@ -1,0 +1,13 @@
+{
+  "name": "tabgroupvault",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Store packaging and validation scripts for the TabGroupVault browser extension.",
+  "type": "module",
+  "scripts": {
+    "validate": "node scripts/validate-extension.mjs",
+    "build:edge": "node scripts/build-zip.mjs edge",
+    "build:chrome": "node scripts/build-zip.mjs chrome",
+    "build": "node scripts/build-zip.mjs all"
+  }
+}

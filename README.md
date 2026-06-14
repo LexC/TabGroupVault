@@ -1,6 +1,6 @@
 # TabGroupVault
 
-TabGroupVault is a local Microsoft Edge extension that exports tabs from Edge tab groups in the current window. Each tab group becomes a folder, and each grouped HTTP/HTTPS tab becomes a numbered file in the same left-to-right order shown in the tab strip.
+TabGroupVault is a local Chromium browser extension that exports tabs from browser tab groups in the current window. Each tab group becomes a folder, and each grouped HTTP/HTTPS tab becomes a numbered file in the same left-to-right order shown in the tab strip.
 
 By default, exports are written under a `TabGroupVault` folder inside a folder you choose:
 
@@ -29,7 +29,7 @@ MHTML mode uses the same group folder structure with `.mhtml` files. CSV mode wr
 
 **HTML page + relevant assets (`.html + _files`)** is the default mode. It saves `1.html` plus `1_files/` using a conservative asset set: direct page resources such as scripts, stylesheets, images, icons, media, frames, and `srcset` entries are saved locally. Stylesheet-internal `url(...)` and `@import` references are rewritten to absolute web URLs instead of recursively downloading every referenced asset. This is intended to be closer to Chromium's native "Save Page Complete" folder shape, but Chromium does not expose that exact internal pipeline to extensions.
 
-**HTML page + all assets (`.html + _files`)** uses the same root HTML local-path references as relevant-assets mode, then follows stylesheet `url(...)` and `@import` references recursively while writing asset files. This may save many more files than Edge's native save for large sites.
+**HTML page + all assets (`.html + _files`)** uses the same root HTML local-path references as relevant-assets mode, then follows stylesheet `url(...)` and `@import` references recursively while writing asset files. This may save many more files than the browser's native save for large sites.
 
 **MHTML page archive (`.mhtml`)** uses Chromium's `chrome.pageCapture.saveAsMHTML` API. It is the most official extension API for offline page capture, but output is a single `.mhtml` file rather than `1.html` plus `1_files/`. Some pages may still fail or archive imperfectly.
 
@@ -37,7 +37,7 @@ MHTML mode uses the same group folder structure with `.mhtml` files. CSV mode wr
 
 ## User-Selected Folder Export
 
-The primary export path uses the File System Access API. Click **Choose output folder** before exporting, then grant read/write access to the chosen folder. Edge exposes the selected folder name to the extension, but it does not expose the full absolute path.
+The primary export path uses the File System Access API. Click **Choose output folder** before exporting, then grant read/write access to the chosen folder. The browser exposes the selected folder name to the extension, but it does not expose the full absolute path.
 
 The checkbox **Create TabGroupVault root folder inside selected output folder** is enabled by default. When enabled, group folders are created inside `TabGroupVault/`. When disabled, group folders are written directly inside the selected folder.
 
@@ -53,16 +53,46 @@ Downloads/TabGroupVault/
 
 The fallback is not silent and does not use repeated save dialogs for every file. For HTML asset modes, selected-folder export keeps `N.html` and `N_files/` pairs together more reliably than the Downloads fallback.
 
-## Install in Microsoft Edge
+## Install for Development
 
-1. Open `edge://extensions`.
+1. Open `edge://extensions` in Microsoft Edge or `chrome://extensions` in Chrome.
 2. Enable **Developer mode**.
 3. Click **Load unpacked**.
-4. Select this `TabGroupVault` project folder.
+4. Select the `extension/` folder inside this project.
+
+## Project Structure
+
+Runtime extension files live under `extension/`. Repo-level files are for documentation, validation, testing, and release packaging.
+
+```text
+extension/
+  manifest.json
+  background/
+  popup/
+  export/
+  shared/
+  assets/icons/
+docs/store/
+scripts/
+dist/
+```
+
+Store ZIPs should contain the contents of `extension/` at the ZIP root, with `manifest.json` directly inside the archive.
+
+## Release Packaging
+
+Run validation and build release ZIPs with:
+
+```text
+npm run validate
+npm run build
+```
+
+`npm run build:edge` writes `dist/tabgroupvault-edge-<version>.zip`. `npm run build:chrome` writes `dist/tabgroupvault-chrome-<version>.zip`. Generated ZIP files are ignored by git.
 
 ## Use
 
-1. Open tabs in Microsoft Edge and place the tabs you want to export into tab groups.
+1. Open tabs in the browser and place the tabs you want to export into tab groups.
 2. Click the TabGroupVault extension button.
 3. Click **Open TabGroupVault**.
 4. Choose an export mode.
@@ -70,11 +100,12 @@ The fallback is not silent and does not use repeated save dialogs for every file
 6. Click **Scan grouped tabs**.
 7. Review the preview.
 8. Click **Export grouped tabs**.
+9. During a long export, click **Stop export** to stop before the next queued page begins. In-flight asset fetches are aborted when the browser allows it.
 
 ## What Gets Exported
 
-- Only tabs in the current Edge window are scanned.
-- Only tabs inside Edge tab groups are exported.
+- Only tabs in the current browser window are scanned.
+- Only tabs inside browser tab groups are exported.
 - Ungrouped tabs are ignored.
 - Only `http://` and `https://` tabs are exported.
 - `edge://`, `chrome://`, extension pages, `file://`, `about:blank`, and other unsupported URLs are skipped.
@@ -82,7 +113,7 @@ The fallback is not silent and does not use repeated save dialogs for every file
 
 ## File and Folder Names
 
-Group folder names come from visible Edge tab group names. Untitled groups use `Group_<groupId>`. Folder names are sanitized for Windows compatibility, and duplicate sanitized group names get a deterministic suffix such as `__group_<groupId>`.
+Group folder names come from visible browser tab group names. Untitled groups use `Group_<groupId>`. Folder names are sanitized for Windows compatibility, and duplicate sanitized group names get a deterministic suffix such as `__group_<groupId>`.
 
 HTML page modes write:
 
@@ -135,16 +166,16 @@ By default, existing files are not overwritten. In HTML asset modes, conflicts a
 
 TabGroupVault requests `tabs`, `tabGroups`, `pageCapture`, `downloads`, and `scripting`. It also requests `http://*/*` and `https://*/*` host permissions so it can serialize open HTTP/HTTPS pages and fetch referenced assets for HTML asset modes.
 
-HTML export uses the standard `scripting` API when Edge exposes it to the archive page. If that API is unavailable there, TabGroupVault asks its background service worker to run the same serializer in each exported HTTP/HTTPS tab.
+HTML export uses the standard `scripting` API when the browser exposes it to the export page. If that API is unavailable there, TabGroupVault asks its background service worker to run the same serializer in each exported HTTP/HTTPS tab.
 
 ## Known Limitations
 
-- HTML snapshot and asset modes are best-effort. Edge does not expose its exact native "Save Page Complete" implementation to extensions.
+- HTML snapshot and asset modes are best-effort. Chromium browsers do not expose the exact native "Save Page Complete" implementation to extensions.
 - Dynamic resources, protected assets, canvas content, service-worker state, cross-origin frames, late-loaded data, or blocked requests may not be captured.
 - If some assets fail, the `.html` file is still written and the progress log reports asset warnings.
 - CSV mode is an index only; it does not save page content.
 - MHTML capture depends on Chromium support and may fail for restricted, internal, or complex pages.
-- Edge shows only the chosen folder name to the extension, not its full path.
+- The browser shows only the chosen folder name to the extension, not its full path.
 - File System Access support depends on the Edge/Chromium extension page context.
 - The Downloads fallback always writes below `Downloads/TabGroupVault/`.
 
@@ -155,6 +186,6 @@ HTML export uses the standard `scripting` API when Edge exposes it to the archiv
 - If write permission is denied, choose the folder again or select another folder.
 - If selected-folder export is unavailable, use the clearly labeled Downloads fallback.
 - If an HTML asset mode reports asset warnings, inspect the exported `N_files/` folder and retry with MHTML mode for a single-file archive.
-- If HTML export says the background serializer is unavailable, reload the unpacked extension at `edge://extensions`, approve any new permissions, and reopen TabGroupVault.
-- If HTML export says a script execution API is unavailable, reload the unpacked extension at `edge://extensions`, approve any new permissions, and reopen TabGroupVault.
+- If HTML export says the background serializer is unavailable, reload the unpacked extension from the browser extensions page, approve any new permissions, and reopen TabGroupVault.
+- If HTML export says a script execution API is unavailable, reload the unpacked extension from the browser extensions page, approve any new permissions, and reopen TabGroupVault.
 - If MHTML capture fails for some pages, retry with an HTML mode or export a CSV index.

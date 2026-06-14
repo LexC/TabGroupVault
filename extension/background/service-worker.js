@@ -1,8 +1,13 @@
 "use strict";
 
-importScripts("page-serializer.js");
+importScripts(
+  "../shared/constants.js",
+  "../shared/browser-api.js",
+  "../export/page-serializer.js"
+);
 
-const RUN_SERIALIZER_IN_TAB_MESSAGE = "TabGroupVault.runSerializerInTab";
+const { RUN_SERIALIZER_IN_TAB_MESSAGE } = globalThis.TabGroupVaultConstants;
+const { executeScript } = globalThis.TabGroupVaultBrowserApi;
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message || message.type !== RUN_SERIALIZER_IN_TAB_MESSAGE) {
@@ -35,7 +40,7 @@ function runSerializerInTab(tabId, options) {
     return Promise.reject(new Error("The scripting API is not available in the extension background service worker."));
   }
 
-  return executeScriptInTab({
+  return executeScript({
     target: {
       tabId
     },
@@ -46,19 +51,5 @@ function runSerializerInTab(tabId, options) {
   }).then((results) => {
     const firstResult = Array.isArray(results) ? results[0] : null;
     return firstResult ? firstResult.result : null;
-  });
-}
-
-function executeScriptInTab(options) {
-  return new Promise((resolve, reject) => {
-    chrome.scripting.executeScript(options, (results) => {
-      const error = chrome.runtime.lastError;
-      if (error) {
-        reject(new Error(error.message));
-        return;
-      }
-
-      resolve(results);
-    });
   });
 }

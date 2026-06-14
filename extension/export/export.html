@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TabGroupVault Export</title>
+    <link rel="stylesheet" href="export.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>TabGroupVault</h1>
+          <p>Export grouped tabs from the current browser window.</p>
+        </div>
+        <div class="row">
+          <button id="scanButton" type="button">Scan grouped tabs</button>
+          <button id="exportButton" class="primary" type="button" disabled>Export grouped tabs</button>
+          <button id="stopExportButton" class="danger" type="button" disabled>Stop export</button>
+        </div>
+      </header>
+
+      <div class="layout">
+        <section class="panel stack" aria-labelledby="controlsHeading">
+          <h2 id="controlsHeading">Export Settings</h2>
+
+          <fieldset>
+            <legend>Export mode</legend>
+            <div class="stack">
+              <label>
+                <input type="radio" name="exportMode" value="html">
+                HTML page, online assets (.html)
+              </label>
+              <label>
+                <input type="radio" name="exportMode" value="html-local">
+                HTML page, local asset paths (.html)
+              </label>
+              <label>
+                <input type="radio" name="exportMode" value="html-relevant" checked>
+                HTML page + relevant assets (.html + _files)
+              </label>
+              <label>
+                <input type="radio" name="exportMode" value="html-all">
+                HTML page + all assets (.html + _files)
+              </label>
+              <label>
+                <input type="radio" name="exportMode" value="mhtml">
+                MHTML page archives (.mhtml)
+              </label>
+              <label>
+                <input type="radio" name="exportMode" value="csv">
+                CSV page index (.csv)
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Destination</legend>
+            <div class="stack">
+              <button id="chooseFolderButton" type="button">Choose output folder</button>
+              <p id="selectedFolderText" class="status">No output folder selected.</p>
+              <label>
+                <input id="createRootFolder" type="checkbox" checked>
+                Create TabGroupVault root folder inside selected output folder
+              </label>
+              <div id="fallbackPanel" class="status warning hidden">
+                <p id="fallbackMessage">Selected-folder export is unavailable.</p>
+                <label>
+                  <input id="useDownloadsFallback" type="checkbox">
+                  Use fallback export to Downloads/TabGroupVault
+                </label>
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Filename conflicts</legend>
+            <input id="conflictBehavior" type="hidden" value="uniquify">
+            <div class="button-group" role="group" aria-label="Filename conflict behavior">
+              <button type="button" data-conflict-value="uniquify" aria-pressed="true">Uniquify existing files</button>
+              <button type="button" data-conflict-value="overwrite" aria-pressed="false">Overwrite existing files</button>
+            </div>
+          </fieldset>
+
+          <section aria-labelledby="summaryHeading">
+            <h2 id="summaryHeading">Summary</h2>
+            <div class="counters" aria-live="polite">
+              <div class="counter">
+                <strong id="eligibleCount">0</strong>
+                <span>Eligible</span>
+              </div>
+              <div class="counter">
+                <strong id="skippedCount">0</strong>
+                <span>Skipped</span>
+              </div>
+              <div class="counter">
+                <strong id="successCount">0</strong>
+                <span>Success</span>
+              </div>
+              <div class="counter">
+                <strong id="failureCount">0</strong>
+                <span>Failed</span>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section class="stack">
+          <section class="panel" aria-labelledby="previewHeading">
+            <h2 id="previewHeading">Preview</h2>
+            <div id="preview" class="preview">
+              <p class="muted">Scan grouped tabs to preview planned folders and files.</p>
+            </div>
+          </section>
+
+          <details class="panel skipped-panel" id="skippedDetails">
+            <summary id="skippedHeading">Skipped Tabs <span id="skippedSummaryText">(0)</span></summary>
+            <div id="skippedTabs">
+              <p class="muted">No skipped tabs yet.</p>
+            </div>
+          </details>
+
+          <section class="panel" aria-labelledby="logHeading">
+            <h2 id="logHeading">Progress Log</h2>
+            <div id="exportProgressPanel" class="export-progress" role="group" aria-labelledby="exportProgressLabel">
+              <div class="export-progress-header">
+                <span id="exportProgressLabel">Export progress</span>
+                <strong id="exportProgressPercent">0%</strong>
+              </div>
+              <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Export progress">
+                <div id="exportProgressBar" class="progress-fill"></div>
+              </div>
+              <p id="exportProgressDetail" class="export-progress-detail">Export progress will appear here when an export starts.</p>
+            </div>
+            <div class="log" aria-live="polite">
+              <div id="progressLog" class="log-list"></div>
+            </div>
+          </section>
+        </section>
+      </div>
+    </main>
+
+    <script src="../shared/constants.js"></script>
+    <script src="../shared/browser-api.js"></script>
+    <script src="page-serializer.js"></script>
+    <script src="export.js"></script>
+  </body>
+</html>

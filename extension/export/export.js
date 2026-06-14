@@ -1,19 +1,32 @@
 "use strict";
 
-const ROOT_FOLDER_NAME = "TabGroupVault";
-const MAX_FOLDER_NAME_LENGTH = 80;
-const MAX_ASSET_FILE_NAME_LENGTH = 120;
-const HTML_PAGE_MODE = "html";
-const HTML_LOCAL_ASSET_PATHS_MODE = "html-local";
-const HTML_RELEVANT_ASSETS_MODE = "html-relevant";
-const HTML_ALL_ASSETS_MODE = "html-all";
-const CSV_MODE = "csv";
-const MHTML_MODE = "mhtml";
-const HTML_ASSET_NONE = "none";
-const HTML_ASSET_RELEVANT = "relevant";
-const HTML_ASSET_ALL = "all";
-const CSV_FILE_NAME = "tab-groups.csv";
-const RUN_SERIALIZER_IN_TAB_MESSAGE = "TabGroupVault.runSerializerInTab";
+const {
+  ROOT_FOLDER_NAME,
+  MAX_FOLDER_NAME_LENGTH,
+  MAX_ASSET_FILE_NAME_LENGTH,
+  HTML_PAGE_MODE,
+  HTML_LOCAL_ASSET_PATHS_MODE,
+  HTML_RELEVANT_ASSETS_MODE,
+  HTML_ALL_ASSETS_MODE,
+  CSV_MODE,
+  MHTML_MODE,
+  HTML_ASSET_NONE,
+  HTML_ASSET_RELEVANT,
+  HTML_ASSET_ALL,
+  CSV_FILE_NAME,
+  RUN_SERIALIZER_IN_TAB_MESSAGE
+} = globalThis.TabGroupVaultConstants;
+
+const {
+  queryTabs,
+  getTabGroup: getTabGroupById,
+  download,
+  executeScript,
+  executeLegacyTabScript,
+  sendRuntimeMessage,
+  saveAsMHTML
+} = globalThis.TabGroupVaultBrowserApi;
+
 const NO_GROUP_ID = chrome.tabGroups && typeof chrome.tabGroups.TAB_GROUP_ID_NONE === "number"
   ? chrome.tabGroups.TAB_GROUP_ID_NONE
   : -1;
@@ -23,7 +36,9 @@ const state = {
   selectedDirectoryWritable: false,
   exportPlan: null,
   skippedTabs: [],
-  isExporting: false
+  isExporting: false,
+  stopRequested: false,
+  exportAbortController: null
 };
 
 const elements = {};
@@ -40,6 +55,7 @@ document.addEventListener("DOMContentLoaded", () => {
 function bindElements() {
   elements.scanButton = document.getElementById("scanButton");
   elements.exportButton = document.getElementById("exportButton");
+  elements.stopExportButton = document.getElementById("stopExportButton");
   elements.chooseFolderButton = document.getElementById("chooseFolderButton");
   elements.selectedFolderText = document.getElementById("selectedFolderText");
   elements.createRootFolder = document.getElementById("createRootFolder");
@@ -67,6 +83,7 @@ function bindElements() {
 function bindEvents() {
   elements.scanButton.addEventListener("click", scanGroupedTabs);
   elements.exportButton.addEventListener("click", exportGroupedTabs);
+  elements.stopExportButton.addEventListener("click", stopExport);
   elements.chooseFolderButton.addEventListener("click", chooseOutputFolder);
   elements.createRootFolder.addEventListener("change", refreshPlanDisplay);
   elements.useDownloadsFallback.addEventListener("change", () => {
@@ -83,6 +100,36 @@ function bindEvents() {
       setConflictBehavior(button.dataset.conflictValue);
     });
   }
+}
+
+function stopExport() {
+  if (!state.isExporting || state.stopRequested) {
+    return;
+  }
+
+  state.stopRequested = true;
+  if (state.exportAbortController) {
+    state.exportAbortController.abort();
+  }
+  updateExportAvailability();
+  logMessage("Stop requested. TabGroupVault will stop after the current in-flight browser operation ends.", "warning");
+}
+
+function throwIfExportStopped() {
+  if (!state.stopRequested) {
+    return;
+  }
+
+  const error = new Error("Export stopped by user.");
+  error.name = "AbortError";
+  throw error;
+}
+
+function isExportStopError(error) {
+  return Boolean(state.stopRequested && error && (
+    error.name === "AbortError" ||
+    /aborted|cancel|stopped/i.test(getErrorMessage(error))
+  ));
 }
 
 function setConflictBehavior(value) {
@@ -138,10 +185,10 @@ async function chooseOutputFolder() {
     folderName.className = "folder-name";
     folderName.textContent = directoryHandle.name || "chosen folder";
     elements.selectedFolderText.append(folderName);
-    elements.selectedFolderText.append(" (full path is not exposed by Edge to extension pages)");
+    elements.selectedFolderText.append(" (full path is not exposed to extension pages)");
     elements.selectedFolderText.className = "status good";
 
-    logMessage(`Selected output folder name: ${directoryHandle.name || "chosen folder"}. Full path is not exposed by Edge.`, "success");
+    logMessage(`Selected output folder name: ${directoryHandle.name || "chosen folder"}. Full path is not exposed to extension pages.`, "success");
   } catch (error) {
     state.selectedDirectoryHandle = null;
     state.selectedDirectoryWritable = false;
@@ -195,7 +242,7 @@ async function scanGroupedTabs() {
   setExportProgressIdle("Scan in progress. Export progress will appear when an export starts.");
   clearPreview("Scanning grouped tabs...");
   clearSkippedTabs();
-  logMessage("Starting scan of the current Edge window for grouped HTTP/HTTPS tabs.", "start");
+  logMessage("Starting scan of the current browser window for grouped HTTP/HTTPS tabs.", "start");
 
   try {
     const tabs = await queryCurrentWindowTabs();
@@ -221,17 +268,7 @@ async function scanGroupedTabs() {
 }
 
 function queryCurrentWindowTabs() {
-  return new Promise((resolve, reject) => {
-    chrome.tabs.query({ currentWindow: true }, (tabs) => {
-      const error = chrome.runtime.lastError;
-      if (error) {
-        reject(new Error(error.message));
-        return;
-      }
-
-      resolve(Array.isArray(tabs) ? tabs : []);
-    });
-  });
+  return queryTabs({ currentWindow: true });
 }
 
 async function buildExportPlan(tabs) {
@@ -335,21 +372,12 @@ async function loadTabGroupMetadata(groupIds) {
 }
 
 function getTabGroup(groupId) {
-  return new Promise((resolve, reject) => {
-    chrome.tabGroups.get(groupId, (group) => {
-      const error = chrome.runtime.lastError;
-      if (error) {
-        reject(new Error(error.message));
-        return;
-      }
+  return getTabGroupById(groupId).then((group) => {
+    if (!group) {
+      throw new Error(`No metadata returned for group ${groupId}.`);
+    }
 
-      if (!group) {
-        reject(new Error(`No metadata returned for group ${groupId}.`));
-        return;
-      }
-
-      resolve(group);
-    });
+    return group;
   });
 }
 
@@ -441,10 +469,14 @@ async function exportGroupedTabs() {
   }
 
   state.isExporting = true;
+  state.stopRequested = false;
+  state.exportAbortController = typeof AbortController === "function"
+    ? new AbortController()
+    : null;
   setCounter(elements.successCount, 0);
   setCounter(elements.failureCount, 0);
   elements.scanButton.disabled = true;
-  elements.exportButton.disabled = true;
+  updateExportAvailability();
 
   applyModeAndPaths(state.exportPlan);
   renderPreview();
@@ -475,13 +507,25 @@ async function exportGroupedTabs() {
     const warningText = result.assetWarnings > 0
       ? ` ${result.assetWarnings} asset warning(s).`
       : "";
-    logMessage(`Export finished to ${destinationLabel}. ${result.success} succeeded, ${result.failure} failed, ${state.skippedTabs.length} skipped.${warningText}`, result.failure > 0 ? "warning" : "success");
-    finishExportProgress(result, result.failure > 0 ? "warning" : "done");
+    if (state.stopRequested) {
+      logMessage(`Export stopped by user. ${result.success} succeeded, ${result.failure} failed, ${state.skippedTabs.length} skipped.${warningText}`, "warning");
+      finishExportProgress(result, "stopped");
+    } else {
+      logMessage(`Export finished to ${destinationLabel}. ${result.success} succeeded, ${result.failure} failed, ${state.skippedTabs.length} skipped.${warningText}`, result.failure > 0 ? "warning" : "success");
+      finishExportProgress(result, result.failure > 0 ? "warning" : "done");
+    }
   } catch (error) {
-    logMessage(`Export stopped before completion: ${getErrorMessage(error)}`, "error");
-    finishExportProgress(result, "error");
+    if (isExportStopError(error)) {
+      logMessage(`Export stopped by user. ${result.success} succeeded, ${result.failure} failed, ${state.skippedTabs.length} skipped.`, "warning");
+      finishExportProgress(result, "stopped");
+    } else {
+      logMessage(`Export stopped before completion: ${getErrorMessage(error)}`, "error");
+      finishExportProgress(result, "error");
+    }
   } finally {
     state.isExporting = false;
+    state.stopRequested = false;
+    state.exportAbortController = null;
     elements.scanButton.disabled = false;
     setCounter(elements.successCount, result.success);
     setCounter(elements.failureCount, result.failure);
@@ -516,14 +560,17 @@ async function ensureSelectedDirectoryReady() {
 }
 
 async function exportWithFileSystemAccess(plan, result) {
+  throwIfExportStopped();
   const exportRootHandle = await getExportRootDirectory(state.selectedDirectoryHandle);
 
   if (plan.mode === CSV_MODE) {
+    throwIfExportStopped();
     await exportCsvWithFileSystem(exportRootHandle, plan, result);
     return;
   }
 
   for (const group of plan.groups) {
+    throwIfExportStopped();
     let groupDirectoryHandle;
 
     try {
@@ -541,6 +588,7 @@ async function exportWithFileSystemAccess(plan, result) {
     }
 
     for (const file of group.files) {
+      throwIfExportStopped();
       if (isHtmlSnapshotMode(plan.mode)) {
         await exportHtmlSnapshotWithFileSystem(groupDirectoryHandle, group, file, plan.mode, result);
       } else {
@@ -552,7 +600,9 @@ async function exportWithFileSystemAccess(plan, result) {
 
 async function exportSingleFileWithFileSystem(groupDirectoryHandle, group, file, mode, result) {
   try {
+    throwIfExportStopped();
     const blob = await createSingleFileBlob(mode, group, file);
+    throwIfExportStopped();
     const finalFileName = await resolveFileName(groupDirectoryHandle, file.fileName);
     await writeBlobToDirectory(groupDirectoryHandle, finalFileName, blob);
 
@@ -561,6 +611,10 @@ async function exportSingleFileWithFileSystem(groupDirectoryHandle, group, file,
     markExportItemsComplete(result);
     logMessage(`Saved ${group.sanitizedFolderName}/${finalFileName}.`, "success");
   } catch (error) {
+    if (isExportStopError(error)) {
+      throw error;
+    }
+
     result.failure += 1;
     setCounter(elements.failureCount, result.failure);
     markExportItemsComplete(result);
@@ -570,7 +624,9 @@ async function exportSingleFileWithFileSystem(groupDirectoryHandle, group, file,
 
 async function exportCsvWithFileSystem(exportRootHandle, plan, result) {
   try {
+    throwIfExportStopped();
     const csvBlob = createCsvBlob(plan);
+    throwIfExportStopped();
     const finalFileName = await resolveFileName(exportRootHandle, CSV_FILE_NAME);
     await writeBlobToDirectory(exportRootHandle, finalFileName, csvBlob);
 
@@ -579,6 +635,10 @@ async function exportCsvWithFileSystem(exportRootHandle, plan, result) {
     markExportItemsComplete(result);
     logMessage(`Saved ${finalFileName} with ${plan.totalEligibleTabs} grouped tab row(s).`, "success");
   } catch (error) {
+    if (isExportStopError(error)) {
+      throw error;
+    }
+
     result.failure += 1;
     setCounter(elements.failureCount, result.failure);
     markExportItemsComplete(result);
@@ -591,10 +651,12 @@ async function exportHtmlSnapshotWithFileSystem(groupDirectoryHandle, group, fil
   const usesAssetFolder = isHtmlAssetMode(mode);
 
   try {
+    throwIfExportStopped();
     if (!usesAssetFolder) {
       const finalFileName = await resolveFileName(groupDirectoryHandle, file.fileName);
       logMessage(`Capturing ${modeLabel} for ${group.sanitizedFolderName}/${finalFileName}.`, "progress");
       const htmlPackage = await createCompleteHtmlPackage(group, file, file.referenceAssetFolderName, mode);
+      throwIfExportStopped();
       await writeBlobToDirectory(groupDirectoryHandle, finalFileName, htmlPackage.htmlBlob);
 
       result.success += 1;
@@ -607,6 +669,7 @@ async function exportHtmlSnapshotWithFileSystem(groupDirectoryHandle, group, fil
     const outputNames = await resolveCompleteOutputNames(groupDirectoryHandle, file);
     logMessage(`Capturing ${modeLabel} for ${group.sanitizedFolderName}/${outputNames.fileName}.`, "progress");
     const htmlPackage = await createCompleteHtmlPackage(group, file, outputNames.assetFolderName, mode);
+    throwIfExportStopped();
     const writeFailures = await writeCompleteHtmlPackage(groupDirectoryHandle, outputNames, htmlPackage);
     const warningCount = htmlPackage.failures.length + writeFailures.length;
 
@@ -617,6 +680,10 @@ async function exportHtmlSnapshotWithFileSystem(groupDirectoryHandle, group, fil
     logMessage(`Saved ${group.sanitizedFolderName}/${outputNames.fileName} and ${group.sanitizedFolderName}/${outputNames.assetFolderName}/.`, "success");
     logAssetWarnings(htmlPackage.failures, writeFailures, `${group.sanitizedFolderName}/${outputNames.assetFolderName}`);
   } catch (error) {
+    if (isExportStopError(error)) {
+      throw error;
+    }
+
     result.failure += 1;
     setCounter(elements.failureCount, result.failure);
     markExportItemsComplete(result);
@@ -635,6 +702,7 @@ async function getExportRootDirectory(selectedDirectoryHandle) {
 }
 
 async function resolveFileName(directoryHandle, requestedFileName) {
+  throwIfExportStopped();
   if (elements.conflictBehavior.value === "overwrite") {
     await removeEntryIfExists(directoryHandle, requestedFileName);
     return requestedFileName;
@@ -645,6 +713,7 @@ async function resolveFileName(directoryHandle, requestedFileName) {
   let counter = 1;
 
   while (await entryExists(directoryHandle, candidate)) {
+    throwIfExportStopped();
     candidate = `${baseName} (${counter})${extension}`;
     counter += 1;
   }
@@ -653,6 +722,7 @@ async function resolveFileName(directoryHandle, requestedFileName) {
 }
 
 async function resolveCompleteOutputNames(directoryHandle, file) {
+  throwIfExportStopped();
   if (elements.conflictBehavior.value === "overwrite") {
     await removeEntryIfExists(directoryHandle, file.fileName);
     await removeEntryIfExists(directoryHandle, file.assetFolderName);
@@ -665,6 +735,7 @@ async function resolveCompleteOutputNames(directoryHandle, file) {
   let counter = 0;
 
   while (true) {
+    throwIfExportStopped();
     const baseName = counter === 0
       ? file.baseFileName
       : `${file.baseFileName} (${counter})`;
@@ -747,14 +818,20 @@ async function removeEntryIfExists(directoryHandle, entryName) {
 
 async function writeCompleteHtmlPackage(groupDirectoryHandle, outputNames, htmlPackage) {
   const writeFailures = [];
+  throwIfExportStopped();
   const assetDirectoryHandle = await groupDirectoryHandle.getDirectoryHandle(outputNames.assetFolderName, {
     create: true
   });
 
   for (const asset of htmlPackage.assets) {
+    throwIfExportStopped();
     try {
       await writeBlobToDirectory(assetDirectoryHandle, asset.fileName, asset.blob);
     } catch (error) {
+      if (isExportStopError(error)) {
+        throw error;
+      }
+
       writeFailures.push({
         url: asset.url,
         fileName: asset.fileName,
@@ -763,19 +840,23 @@ async function writeCompleteHtmlPackage(groupDirectoryHandle, outputNames, htmlP
     }
   }
 
+  throwIfExportStopped();
   await writeBlobToDirectory(groupDirectoryHandle, outputNames.fileName, htmlPackage.htmlBlob);
   return writeFailures;
 }
 
 async function writeBlobToDirectory(directoryHandle, fileName, blob) {
+  throwIfExportStopped();
   const fileHandle = await directoryHandle.getFileHandle(fileName, {
     create: true
   });
+  throwIfExportStopped();
   const writable = await fileHandle.createWritable({
     keepExistingData: false
   });
 
   try {
+    throwIfExportStopped();
     await writable.write(blob);
     await writable.close();
   } catch (error) {
@@ -790,7 +871,9 @@ async function writeBlobToDirectory(directoryHandle, fileName, blob) {
 }
 
 async function exportWithDownloadsFallback(plan, result) {
+  throwIfExportStopped();
   if (plan.mode === CSV_MODE) {
+    throwIfExportStopped();
     await exportCsvWithDownloadsFallback(plan, result);
     return;
   }
@@ -800,7 +883,9 @@ async function exportWithDownloadsFallback(plan, result) {
   }
 
   for (const group of plan.groups) {
+    throwIfExportStopped();
     for (const file of group.files) {
+      throwIfExportStopped();
       if (isHtmlSnapshotMode(plan.mode)) {
         await exportHtmlSnapshotWithDownloadsFallback(group, file, plan.mode, result);
       } else {
@@ -812,7 +897,9 @@ async function exportWithDownloadsFallback(plan, result) {
 
 async function exportSingleFileWithDownloadsFallback(group, file, mode, result) {
   try {
+    throwIfExportStopped();
     const blob = await createSingleFileBlob(mode, group, file);
+    throwIfExportStopped();
     const filename = `${ROOT_FOLDER_NAME}/${group.sanitizedFolderName}/${file.fileName}`;
     await downloadBlob(blob, filename);
 
@@ -821,6 +908,10 @@ async function exportSingleFileWithDownloadsFallback(group, file, mode, result) 
     markExportItemsComplete(result);
     logMessage(`Queued fallback download ${filename}.`, "success");
   } catch (error) {
+    if (isExportStopError(error)) {
+      throw error;
+    }
+
     result.failure += 1;
     setCounter(elements.failureCount, result.failure);
     markExportItemsComplete(result);
@@ -830,7 +921,9 @@ async function exportSingleFileWithDownloadsFallback(group, file, mode, result) 
 
 async function exportCsvWithDownloadsFallback(plan, result) {
   try {
+    throwIfExportStopped();
     const csvBlob = createCsvBlob(plan);
+    throwIfExportStopped();
     const filename = `${ROOT_FOLDER_NAME}/${CSV_FILE_NAME}`;
     await downloadBlob(csvBlob, filename);
 
@@ -839,6 +932,10 @@ async function exportCsvWithDownloadsFallback(plan, result) {
     markExportItemsComplete(result);
     logMessage(`Queued fallback download ${filename} with ${plan.totalEligibleTabs} grouped tab row(s).`, "success");
   } catch (error) {
+    if (isExportStopError(error)) {
+      throw error;
+    }
+
     result.failure += 1;
     setCounter(elements.failureCount, result.failure);
     markExportItemsComplete(result);
@@ -851,20 +948,27 @@ async function exportHtmlSnapshotWithDownloadsFallback(group, file, mode, result
   const usesAssetFolder = isHtmlAssetMode(mode);
 
   try {
+    throwIfExportStopped();
     logMessage(`Capturing ${modeLabel} for fallback ${group.sanitizedFolderName}/${file.fileName}.`, "progress");
     const referenceAssetFolderName = usesAssetFolder
       ? file.assetFolderName
       : file.referenceAssetFolderName;
     const htmlPackage = await createCompleteHtmlPackage(group, file, referenceAssetFolderName, mode);
+    throwIfExportStopped();
     const htmlFilename = `${ROOT_FOLDER_NAME}/${group.sanitizedFolderName}/${file.fileName}`;
     await downloadBlob(htmlPackage.htmlBlob, htmlFilename);
 
     if (usesAssetFolder) {
       for (const asset of htmlPackage.assets) {
+        throwIfExportStopped();
         const assetFilename = `${ROOT_FOLDER_NAME}/${group.sanitizedFolderName}/${file.assetFolderName}/${asset.fileName}`;
         try {
           await downloadBlob(asset.blob, assetFilename);
         } catch (error) {
+          if (isExportStopError(error)) {
+            throw error;
+          }
+
           htmlPackage.failures.push({
             url: asset.url,
             fileName: asset.fileName,
@@ -885,6 +989,10 @@ async function exportHtmlSnapshotWithDownloadsFallback(group, file, mode, result
       logMessage(`Queued fallback download ${htmlFilename}.`, "success");
     }
   } catch (error) {
+    if (isExportStopError(error)) {
+      throw error;
+    }
+
     result.failure += 1;
     setCounter(elements.failureCount, result.failure);
     markExportItemsComplete(result);
@@ -893,6 +1001,7 @@ async function exportHtmlSnapshotWithDownloadsFallback(group, file, mode, result
 }
 
 async function downloadBlob(blob, filename) {
+  throwIfExportStopped();
   const objectUrl = URL.createObjectURL(blob);
 
   try {
@@ -903,28 +1012,20 @@ async function downloadBlob(blob, filename) {
 }
 
 function downloadBlobUrl(url, filename) {
+  throwIfExportStopped();
   const conflictAction = elements.conflictBehavior.value === "overwrite" ? "overwrite" : "uniquify";
 
-  return new Promise((resolve, reject) => {
-    chrome.downloads.download({
-      url,
-      filename,
-      conflictAction,
-      saveAs: false
-    }, (downloadId) => {
-      const error = chrome.runtime.lastError;
-      if (error) {
-        reject(new Error(error.message));
-        return;
-      }
+  return download({
+    url,
+    filename,
+    conflictAction,
+    saveAs: false
+  }).then((downloadId) => {
+    if (typeof downloadId !== "number") {
+      throw new Error("The browser did not return a download ID.");
+    }
 
-      if (typeof downloadId !== "number") {
-        reject(new Error("The browser did not return a download ID."));
-        return;
-      }
-
-      resolve(downloadId);
-    });
+    return downloadId;
   });
 }
 
@@ -1009,17 +1110,21 @@ function normalizeBooleanTitleText(value) {
 }
 
 async function createCompleteHtmlPackage(group, file, assetFolderName, mode) {
+  throwIfExportStopped();
   const serializerAssetMode = getHtmlSerializerAssetMode(mode);
   const fetchAssetMode = getHtmlFetchAssetMode(mode);
   const capturedPage = await captureCompleteHtmlSnapshot(file.tabId, assetFolderName, serializerAssetMode);
+  throwIfExportStopped();
   const context = createAssetContext(assetFolderName, fetchAssetMode);
 
   if (shouldDownloadHtmlAssets(mode)) {
     for (const resource of capturedPage.resources) {
+      throwIfExportStopped();
       await ensureAsset(resource.url, resource.fileName, resource.kind, context);
     }
   }
 
+  throwIfExportStopped();
   const htmlWithMetadata = addExportMetadataComment(capturedPage.html, group, file, context.failures.length, mode);
 
   return {
@@ -1061,7 +1166,7 @@ function executeSerializerInTab(tabId, options) {
   }
 
   return Promise.reject(new Error(
-    "HTML export requires the scripting API or the background serializer. Reload TabGroupVault at edge://extensions after updating the extension, then reopen TabGroupVault."
+    "HTML export requires the scripting API or the background serializer. Reload TabGroupVault from your browser extensions page after updating the extension, then reopen TabGroupVault."
   ));
 }
 
@@ -1101,484 +1206,51 @@ function executeSerializerWithScriptingApi(scriptingApiInfo, tabId, options) {
     });
   }
 
-  return new Promise((resolve, reject) => {
-    scriptingApiInfo.api.executeScript(executeOptions, (results) => {
-      const error = chrome.runtime.lastError;
-      if (error) {
-        reject(new Error(error.message));
-        return;
-      }
-
-      const firstResult = Array.isArray(results) ? results[0] : null;
-      const capturedPage = firstResult ? firstResult.result : null;
-      resolve(capturedPage);
-    });
+  return executeScript(executeOptions).then((results) => {
+    const firstResult = Array.isArray(results) ? results[0] : null;
+    return firstResult ? firstResult.result : null;
   });
 }
 
 function executeSerializerWithLegacyTabsApi(tabId, options) {
-  return new Promise((resolve, reject) => {
-    const code = `(${serializeCompleteHtmlInPage.toString()})(${JSON.stringify(options)})`;
-    chrome.tabs.executeScript(tabId, {
-      code,
-      runAt: "document_idle"
-    }, (results) => {
-      const error = chrome.runtime.lastError;
-      if (error) {
-        reject(new Error(error.message));
-        return;
-      }
-
-      resolve(Array.isArray(results) ? results[0] : null);
-    });
+  const code = `(${serializeCompleteHtmlInPage.toString()})(${JSON.stringify(options)})`;
+  return executeLegacyTabScript(tabId, {
+    code,
+    runAt: "document_idle"
+  }).then((results) => {
+    return Array.isArray(results) ? results[0] : null;
   });
 }
 
 function executeSerializerWithBackground(tabId, options) {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage({
-      type: RUN_SERIALIZER_IN_TAB_MESSAGE,
-      tabId,
-      options
-    }, (response) => {
-      const error = chrome.runtime.lastError;
-      if (error) {
-        reject(new Error(formatBackgroundSerializerError(error.message)));
-        return;
-      }
+  return sendRuntimeMessage({
+    type: RUN_SERIALIZER_IN_TAB_MESSAGE,
+    tabId,
+    options
+  }).catch((error) => {
+    throw new Error(formatBackgroundSerializerError(error.message));
+  }).then((response) => {
+    if (!response) {
+      throw new Error("The background serializer returned no response.");
+    }
 
-      if (!response) {
-        reject(new Error("The background serializer returned no response."));
-        return;
-      }
+    if (!response.ok) {
+      throw new Error(response.error || "The background serializer failed.");
+    }
 
-      if (!response.ok) {
-        reject(new Error(response.error || "The background serializer failed."));
-        return;
-      }
-
-      resolve(response.result || null);
-    });
+    return response.result || null;
   });
 }
 
 function formatBackgroundSerializerError(message) {
   const details = String(message || "").trim();
   if (/receiving end does not exist/i.test(details)) {
-    return "The background serializer is not available. Reload TabGroupVault at edge://extensions, then reopen TabGroupVault.";
+    return "The background serializer is not available. Reload TabGroupVault from your browser extensions page, then reopen TabGroupVault.";
   }
 
   return details
     ? `The background serializer failed: ${details}`
     : "The background serializer failed.";
-}
-
-function serializeCompleteHtmlInPage(options) {
-  const assetMode = options.assetMode || "all";
-  const shouldLocalizeAssets = assetMode !== "none";
-  const shouldUseFallbackExtensions = assetMode === "all";
-  const shouldRewriteEmbeddedCssAsAssets = assetMode === "all";
-  const assetFolderName = options.assetFolderName || "";
-  const sourceUrl = window.location.href;
-  const baseUrl = document.baseURI || sourceUrl;
-  const clone = document.documentElement.cloneNode(true);
-  const resourcesByUrl = new Map();
-  const usedFileNames = new Set();
-
-  function shouldSkipUrl(rawUrl) {
-    if (!rawUrl) {
-      return true;
-    }
-
-    const trimmed = String(rawUrl).trim();
-    const lower = trimmed.toLowerCase();
-    return !trimmed ||
-      trimmed.startsWith("#") ||
-      lower.startsWith("data:") ||
-      lower.startsWith("blob:") ||
-      lower.startsWith("javascript:") ||
-      lower.startsWith("mailto:") ||
-      lower.startsWith("tel:") ||
-      lower.startsWith("about:");
-  }
-
-  function resolveUrl(rawUrl) {
-    if (shouldSkipUrl(rawUrl)) {
-      return null;
-    }
-
-    try {
-      const absoluteUrl = new URL(rawUrl, baseUrl);
-      if (absoluteUrl.protocol !== "http:" && absoluteUrl.protocol !== "https:") {
-        return null;
-      }
-
-      return absoluteUrl.href;
-    } catch (_error) {
-      return null;
-    }
-  }
-
-  function addResource(rawUrl, kind) {
-    if (!shouldLocalizeAssets) {
-      return null;
-    }
-
-    const absoluteUrl = resolveUrl(rawUrl);
-    if (!absoluteUrl) {
-      return null;
-    }
-
-    if (resourcesByUrl.has(absoluteUrl)) {
-      return resourcesByUrl.get(absoluteUrl).localPath;
-    }
-
-    const fileName = allocateAssetFileName(absoluteUrl, kind);
-    const localPath = `./${assetFolderName}/${fileName}`;
-    resourcesByUrl.set(absoluteUrl, {
-      url: absoluteUrl,
-      fileName,
-      localPath,
-      kind
-    });
-    return localPath;
-  }
-
-  function makeAbsoluteResourceUrl(rawUrl) {
-    return resolveUrl(rawUrl);
-  }
-
-  function allocateAssetFileName(absoluteUrl, kind) {
-    const fallbackExtension = getFallbackExtension(kind);
-    let candidate = "";
-
-    try {
-      const parsedUrl = new URL(absoluteUrl);
-      const pathname = parsedUrl.pathname;
-      const lastSegment = pathname.slice(pathname.lastIndexOf("/") + 1);
-      candidate = decodeURIComponent(lastSegment || "");
-    } catch (_error) {
-      candidate = "";
-    }
-
-    candidate = sanitizeAssetFileName(candidate);
-
-    if (!candidate) {
-      candidate = `asset${fallbackExtension}`;
-    } else if (!candidate.includes(".") && fallbackExtension && shouldUseFallbackExtensions) {
-      candidate = `${candidate}${fallbackExtension}`;
-    }
-
-    candidate = trimAssetFileName(candidate);
-    return uniquifyAssetFileName(candidate);
-  }
-
-  function sanitizeAssetFileName(fileName) {
-    const sanitized = String(fileName)
-      .replace(/[<>:"/\\|?*\x00-\x1F]/g, "_")
-      .replace(/^\.+/g, "")
-      .replace(/[.\s]+$/g, "")
-      .trim();
-    return isReservedAssetFileName(sanitized) ? `${sanitized}_asset` : sanitized;
-  }
-
-  function isReservedAssetFileName(fileName) {
-    return /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$/i.test(fileName);
-  }
-
-  function trimAssetFileName(fileName) {
-    if (fileName.length <= 120) {
-      return fileName;
-    }
-
-    const dotIndex = fileName.lastIndexOf(".");
-    if (dotIndex > 0 && dotIndex > fileName.length - 16) {
-      const extension = fileName.slice(dotIndex);
-      return fileName.slice(0, 120 - extension.length).replace(/[.\s]+$/g, "") + extension;
-    }
-
-    return fileName.slice(0, 120).replace(/[.\s]+$/g, "");
-  }
-
-  function uniquifyAssetFileName(fileName) {
-    const splitName = splitFileName(fileName || "asset");
-    let candidate = fileName || "asset";
-    let counter = 1;
-
-    while (usedFileNames.has(candidate.toLowerCase())) {
-      candidate = `${splitName.baseName} (${counter})${splitName.extension}`;
-      candidate = trimAssetFileName(candidate);
-      counter += 1;
-    }
-
-    usedFileNames.add(candidate.toLowerCase());
-    return candidate;
-  }
-
-  function splitFileName(fileName) {
-    const dotIndex = fileName.lastIndexOf(".");
-    if (dotIndex <= 0) {
-      return {
-        baseName: fileName,
-        extension: ""
-      };
-    }
-
-    return {
-      baseName: fileName.slice(0, dotIndex),
-      extension: fileName.slice(dotIndex)
-    };
-  }
-
-  function getFallbackExtension(kind) {
-    if (kind === "style") {
-      return ".css";
-    }
-
-    if (kind === "script") {
-      return ".js";
-    }
-
-    if (kind === "manifest") {
-      return ".webmanifest";
-    }
-
-    return "";
-  }
-
-  function setLocalResource(element, attrName, localPath) {
-    element.setAttribute(attrName, localPath);
-    element.removeAttribute("integrity");
-    element.removeAttribute("crossorigin");
-  }
-
-  function setAbsoluteResource(element, attrName, absoluteUrl) {
-    element.setAttribute(attrName, absoluteUrl);
-  }
-
-  function rewriteUrlAttribute(selector, attrName, kind) {
-    for (const element of clone.querySelectorAll(selector)) {
-      const rawValue = element.getAttribute(attrName);
-      if (!shouldLocalizeAssets) {
-        const absoluteUrl = makeAbsoluteResourceUrl(rawValue);
-        if (absoluteUrl) {
-          setAbsoluteResource(element, attrName, absoluteUrl);
-        }
-        continue;
-      }
-
-      const localPath = addResource(rawValue, kind);
-      if (localPath) {
-        setLocalResource(element, attrName, localPath);
-      }
-    }
-  }
-
-  function rewriteSrcsetAttribute(selector, attrName, kind) {
-    for (const element of clone.querySelectorAll(selector)) {
-      const rawValue = element.getAttribute(attrName);
-      const rewritten = shouldLocalizeAssets
-        ? rewriteSrcset(rawValue, kind)
-        : makeAbsoluteSrcset(rawValue);
-      if (rewritten && rewritten !== rawValue) {
-        element.setAttribute(attrName, rewritten);
-        if (shouldLocalizeAssets) {
-          element.removeAttribute("integrity");
-          element.removeAttribute("crossorigin");
-        }
-      }
-    }
-  }
-
-  function rewriteSrcset(srcset, kind) {
-    if (!srcset) {
-      return srcset;
-    }
-
-    return srcset.split(",").map((entry) => {
-      const trimmedEntry = entry.trim();
-      if (!trimmedEntry) {
-        return trimmedEntry;
-      }
-
-      const parts = trimmedEntry.split(/\s+/);
-      const urlPart = parts.shift();
-      const localPath = addResource(urlPart, kind);
-      if (!localPath) {
-        return trimmedEntry;
-      }
-
-      return [localPath, ...parts].join(" ");
-    }).join(", ");
-  }
-
-  function makeAbsoluteSrcset(srcset) {
-    if (!srcset) {
-      return srcset;
-    }
-
-    return srcset.split(",").map((entry) => {
-      const trimmedEntry = entry.trim();
-      if (!trimmedEntry) {
-        return trimmedEntry;
-      }
-
-      const parts = trimmedEntry.split(/\s+/);
-      const urlPart = parts.shift();
-      const absoluteUrl = makeAbsoluteResourceUrl(urlPart);
-      if (!absoluteUrl) {
-        return trimmedEntry;
-      }
-
-      return [absoluteUrl, ...parts].join(" ");
-    }).join(", ");
-  }
-
-  function rewriteInlineCss(cssText) {
-    if (!cssText) {
-      return cssText;
-    }
-
-    return cssText.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g, (match, _quote, rawUrl) => {
-      if (!shouldLocalizeAssets || !shouldRewriteEmbeddedCssAsAssets) {
-        const absoluteUrl = makeAbsoluteResourceUrl(rawUrl);
-        return absoluteUrl ? `url("${absoluteUrl}")` : match;
-      }
-
-      const localPath = addResource(rawUrl, "asset");
-      return localPath ? `url("${localPath}")` : match;
-    });
-  }
-
-  function makeAbsoluteDocumentUrl(rawUrl) {
-    if (shouldSkipUrl(rawUrl)) {
-      return rawUrl;
-    }
-
-    try {
-      return new URL(rawUrl, baseUrl).href;
-    } catch (_error) {
-      return rawUrl;
-    }
-  }
-
-  function removeUploadFromMobileOption() {
-    const removableSelectors = [
-      "button",
-      "a",
-      "li",
-      "[role='button']",
-      "[role='menuitem']",
-      "[role='option']",
-      "[aria-label]",
-      "[title]"
-    ].join(",");
-
-    for (const element of Array.from(clone.querySelectorAll(removableSelectors))) {
-      const visibleText = normalizeControlText(element.textContent);
-      const ariaLabel = normalizeControlText(element.getAttribute("aria-label"));
-      const title = normalizeControlText(element.getAttribute("title"));
-
-      if (visibleText === "upload from mobile" ||
-        ariaLabel === "upload from mobile" ||
-        title === "upload from mobile") {
-        element.remove();
-      }
-    }
-  }
-
-  function normalizeControlText(value) {
-    return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
-  }
-
-  removeUploadFromMobileOption();
-  clone.querySelectorAll("base").forEach((element) => element.remove());
-
-  rewriteUrlAttribute("img[src]", "src", "image");
-  rewriteUrlAttribute("script[src]", "src", "script");
-  rewriteUrlAttribute("video[src]", "src", "media");
-  rewriteUrlAttribute("audio[src]", "src", "media");
-  rewriteUrlAttribute("source[src]", "src", "media");
-  rewriteUrlAttribute("track[src]", "src", "media");
-  rewriteUrlAttribute("iframe[src]", "src", "frame");
-  rewriteUrlAttribute("embed[src]", "src", "frame");
-  rewriteUrlAttribute("object[data]", "data", "frame");
-  rewriteUrlAttribute("input[type='image'][src]", "src", "image");
-  rewriteUrlAttribute("[poster]", "poster", "image");
-  rewriteSrcsetAttribute("img[srcset]", "srcset", "image");
-  rewriteSrcsetAttribute("source[srcset]", "srcset", "image");
-
-  for (const link of clone.querySelectorAll("link[href]")) {
-    const rel = (link.getAttribute("rel") || "").toLowerCase();
-    const asValue = (link.getAttribute("as") || "").toLowerCase();
-    let kind = "";
-
-    if (rel.includes("stylesheet")) {
-      kind = "style";
-    } else if (rel.includes("manifest")) {
-      kind = "manifest";
-    } else if (rel.includes("icon") || rel.includes("apple-touch-icon") || rel.includes("mask-icon")) {
-      kind = "image";
-    } else if (assetMode === "all" && (rel.includes("preload") || rel.includes("modulepreload") || rel.includes("prefetch"))) {
-      kind = asValue === "style" ? "style" : asValue === "script" ? "script" : "asset";
-    }
-
-    if (kind) {
-      if (!shouldLocalizeAssets) {
-        const absoluteUrl = makeAbsoluteResourceUrl(link.getAttribute("href"));
-        if (absoluteUrl) {
-          setAbsoluteResource(link, "href", absoluteUrl);
-        }
-      } else {
-        const localPath = addResource(link.getAttribute("href"), kind);
-        if (localPath) {
-          setLocalResource(link, "href", localPath);
-        }
-      }
-    }
-  }
-
-  if (!shouldLocalizeAssets) {
-    for (const link of clone.querySelectorAll("link[href]")) {
-      const absoluteUrl = makeAbsoluteResourceUrl(link.getAttribute("href"));
-      if (absoluteUrl) {
-        setAbsoluteResource(link, "href", absoluteUrl);
-      }
-    }
-  }
-
-  for (const element of clone.querySelectorAll("[style]")) {
-    const rawStyle = element.getAttribute("style");
-    const rewrittenStyle = rewriteInlineCss(rawStyle);
-    if (rewrittenStyle !== rawStyle) {
-      element.setAttribute("style", rewrittenStyle);
-    }
-  }
-
-  for (const styleElement of clone.querySelectorAll("style")) {
-    styleElement.textContent = rewriteInlineCss(styleElement.textContent || "");
-  }
-
-  for (const anchor of clone.querySelectorAll("a[href], area[href]")) {
-    anchor.setAttribute("href", makeAbsoluteDocumentUrl(anchor.getAttribute("href")));
-  }
-
-  for (const form of clone.querySelectorAll("form[action]")) {
-    form.setAttribute("action", makeAbsoluteDocumentUrl(form.getAttribute("action")));
-  }
-
-  const doctype = document.doctype
-    ? `<!DOCTYPE ${document.doctype.name}>`
-    : "<!DOCTYPE html>";
-  const escapedSource = sourceUrl.replace(/--/g, "- -");
-  const html = `${doctype}\n<!-- saved from url=(${sourceUrl.length})${escapedSource} -->\n${clone.outerHTML}\n`;
-
-  return {
-    title: document.title || sourceUrl,
-    url: sourceUrl,
-    html,
-    resources: Array.from(resourcesByUrl.values())
-  };
 }
 
 function createAssetContext(assetFolderName, assetMode) {
@@ -1593,6 +1265,7 @@ function createAssetContext(assetFolderName, assetMode) {
 }
 
 async function ensureAsset(rawUrl, preferredFileName, kind, context) {
+  throwIfExportStopped();
   const absoluteUrl = normalizeFetchableAssetUrl(rawUrl);
   if (!absoluteUrl) {
     return null;
@@ -1616,6 +1289,10 @@ async function ensureAsset(rawUrl, preferredFileName, kind, context) {
       });
       return fileName;
     } catch (error) {
+      if (isExportStopError(error)) {
+        throw error;
+      }
+
       context.failures.push({
         url: absoluteUrl,
         fileName,
@@ -1738,10 +1415,13 @@ function getFallbackExtension(kind) {
 }
 
 async function fetchAssetAsBlob(absoluteUrl, kind, context) {
+  throwIfExportStopped();
   const response = await fetch(absoluteUrl, {
     credentials: "include",
-    cache: "force-cache"
+    cache: "force-cache",
+    signal: state.exportAbortController ? state.exportAbortController.signal : undefined
   });
+  throwIfExportStopped();
 
   if (!response.ok) {
     throw new Error(`HTTP ${response.status} ${response.statusText || ""}`.trim());
@@ -1751,6 +1431,7 @@ async function fetchAssetAsBlob(absoluteUrl, kind, context) {
 
   if (kind === "style" || looksLikeCssAsset(absoluteUrl, contentType)) {
     const cssText = await response.text();
+    throwIfExportStopped();
     const rewrittenCss = context.assetMode === HTML_ASSET_ALL
       ? await rewriteCssAssetUrls(cssText, absoluteUrl, context)
       : absolutizeCssAssetUrls(cssText, absoluteUrl);
@@ -1759,7 +1440,9 @@ async function fetchAssetAsBlob(absoluteUrl, kind, context) {
     });
   }
 
-  return response.blob();
+  const blob = await response.blob();
+  throwIfExportStopped();
+  return blob;
 }
 
 function looksLikeCssAsset(absoluteUrl, contentType) {
@@ -1798,6 +1481,7 @@ async function rewriteCssUrlFunctions(cssText, cssUrl, context) {
   let match = urlRegex.exec(cssText);
 
   while (match) {
+    throwIfExportStopped();
     const rawUrl = match[2].trim();
     const replacement = await makeCssLocalUrl(match[0], rawUrl, cssUrl, "asset", context);
     result += cssText.slice(lastIndex, match.index);
@@ -1816,6 +1500,7 @@ async function rewriteCssImports(cssText, cssUrl, context) {
   let match = importRegex.exec(cssText);
 
   while (match) {
+    throwIfExportStopped();
     const rawUrl = match[2].trim();
     const replacement = await makeCssImportLocalUrl(match[0], rawUrl, cssUrl, context);
     result += cssText.slice(lastIndex, match.index);
@@ -1828,6 +1513,7 @@ async function rewriteCssImports(cssText, cssUrl, context) {
 }
 
 async function makeCssLocalUrl(originalText, rawUrl, cssUrl, kind, context) {
+  throwIfExportStopped();
   const absoluteUrl = resolveNestedAssetUrl(rawUrl, cssUrl);
   if (!absoluteUrl) {
     return originalText;
@@ -1838,6 +1524,7 @@ async function makeCssLocalUrl(originalText, rawUrl, cssUrl, kind, context) {
 }
 
 async function makeCssImportLocalUrl(originalText, rawUrl, cssUrl, context) {
+  throwIfExportStopped();
   const absoluteUrl = resolveNestedAssetUrl(rawUrl, cssUrl);
   if (!absoluteUrl) {
     return originalText;
@@ -1922,21 +1609,12 @@ function logAssetWarnings(fetchFailures, writeFailures, assetFolderLabel) {
 }
 
 function saveTabAsMhtml(tabId) {
-  return new Promise((resolve, reject) => {
-    chrome.pageCapture.saveAsMHTML({ tabId }, (blob) => {
-      const error = chrome.runtime.lastError;
-      if (error) {
-        reject(new Error(error.message));
-        return;
-      }
+  return saveAsMHTML({ tabId }).then((blob) => {
+    if (!(blob instanceof Blob)) {
+      throw new Error("MHTML capture did not return a Blob.");
+    }
 
-      if (!(blob instanceof Blob)) {
-        reject(new Error("MHTML capture did not return a Blob."));
-        return;
-      }
-
-      resolve(blob);
-    });
+    return blob;
   });
 }
 
@@ -2210,6 +1888,7 @@ function updateExportAvailability() {
   const hasSelectedFolder = Boolean(state.selectedDirectoryHandle && state.selectedDirectoryWritable);
   const hasDestination = hasSelectedFolder || isDownloadsFallbackSelected();
   elements.exportButton.disabled = state.isExporting || !hasPlan || !hasDestination;
+  elements.stopExportButton.disabled = !state.isExporting || state.stopRequested;
 }
 
 function updateScanCounters(plan) {
@@ -2278,11 +1957,14 @@ function finishExportProgress(result, state) {
     ? "Export finished."
     : state === "warning"
       ? "Export finished with failures or warnings."
-      : "Export stopped before all items were concluded.";
+      : state === "stopped"
+        ? "Export stopped by user."
+        : "Export stopped before all items were concluded.";
   updateExportProgress(result, statusText);
   elements.exportProgressPanel.classList.toggle("done", state === "done");
   elements.exportProgressPanel.classList.toggle("warning", state === "warning");
   elements.exportProgressPanel.classList.toggle("error", state === "error");
+  elements.exportProgressPanel.classList.toggle("stopped", state === "stopped");
 }
 
 function updateExportProgress(result, statusText) {
