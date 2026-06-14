@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "TabGroupVault",
+  "version": "1.0.0",
+  "description": "Export Microsoft Edge tab groups as HTML pages, HTML asset folders, MHTML archives, or a CSV index.",
+  "permissions": [
+    "tabs",
+    "tabGroups",
+    "pageCapture",
+    "downloads",
+    "scripting",
+    "debugger"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "action": {
+    "default_title": "TabGroupVault",
+    "default_popup": "popup.html"
+  }
+}
