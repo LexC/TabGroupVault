@@ -53,7 +53,7 @@ factory globals so the entrypoint can compose them without a build step.
 ## Coding Conventions
 
 - Add `// @ts-check` to JavaScript and document cross-file shapes in
-  `types/tabpack-globals.d.ts`.
+  `extension/types/tabpack-globals.d.ts`.
 - Keep pure logic in `shared/export-helpers.js`; keep DOM writes in renderer
   modules; keep browser/filesystem effects behind focused modules.
 - Prefer small named functions over inline branching in event handlers.

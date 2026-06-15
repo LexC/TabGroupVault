@@ -103,6 +103,8 @@
       renderer.resetCounters();
       renderer.setExportProgressIdle("Export progress will appear here when an export starts.");
       renderer.updateExportAvailability();
+    }).finally(() => {
+      elements.scanButton.disabled = false;
     });
   });
 

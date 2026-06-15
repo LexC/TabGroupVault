@@ -10,7 +10,9 @@
 
 ## Static Checks
 
+- [ ] Run `npm run capture:store-assets`.
 - [ ] Run `npm run check`.
+- [ ] Confirm generated store screenshots and promotional images exist under `docs/store/`.
 - [ ] Confirm `dist/tabpack-edge-<version>.zip` exists.
 - [ ] Confirm `dist/tabpack-chrome-<version>.zip` exists.
 - [ ] Inspect both ZIPs and confirm `manifest.json` is at the ZIP root.

@@ -27,6 +27,7 @@ test("local asset path serialization does not trigger live page asset requests",
             <link rel="stylesheet" href="/style.css">
           </head>
           <body>
+            <button type="button" aria-label="Upload from mobile">Upload from mobile</button>
             <img src="/image.png" alt="">
             <iframe src="/frame.html"></iframe>
             <script src="/script.js"></script>
@@ -87,6 +88,8 @@ test("local asset path serialization does not trigger live page asset requests",
     await page.waitForTimeout(700);
 
     expect(capturedPage.html).toContain("./x_files/image.png");
+    expect(capturedPage.html).toContain("Upload from mobile");
+    expect(capturedPage.html).toContain("aria-label=\"Upload from mobile\"");
     expect(requests.filter((pathName) => pathName !== "/favicon.ico")).toEqual([]);
   } finally {
     await browser.close();

@@ -1,10 +1,20 @@
 # Store Screenshots
 
-Place store screenshots here before submission.
+Run this command before submission:
+
+```text
+npm run capture:store-assets
+```
+
+Generated screenshots:
+
+- `popup-summary.png`
+- `export-preview.png`
+- `csv-report-preview.png`
 
 Suggested captures:
 
 - Popup with the **Open TabPack** button.
-- Archive page after scanning grouped tabs.
-- Export settings with the selected-folder workflow.
-- Export result folder showing group folders and numbered files.
+- Export page after scanning grouped tabs.
+- CSV report preview with selected grouped tabs.
+- Optional manual capture: export result folder showing group folders and numbered files.

@@ -463,10 +463,6 @@ input[type="checkbox"] {
   min-width: 0;
 }
 
-.tab-title {
-  color: var(--muted);
-}
-
 .preview-fields {
   display: grid;
   gap: 3px;
@@ -610,6 +606,29 @@ input[type="checkbox"] {
 
 .hidden {
   display: none;
+}
+
+.source-footnote {
+  border-top: 1px solid var(--border);
+  margin-top: 18px;
+  padding-top: 12px;
+}
+
+.source-footnote a {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 13px;
+  gap: 6px;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+}
+
+.source-footnote a:hover {
+  color: var(--accent);
+}
+
+.source-footnote svg {
+  flex: 0 0 auto;
 }
 
 @media (max-width: 820px) {

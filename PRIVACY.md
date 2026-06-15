@@ -35,4 +35,4 @@ HTTP/HTTPS host access is requested at runtime for HTML export modes. CSV and MH
 
 ## Contact
 
-For privacy questions, use the support contact listed on the store listing or project repository.
+For privacy questions, use the support contact listed on the store listing or open an issue at https://github.com/LexC/TabPack.

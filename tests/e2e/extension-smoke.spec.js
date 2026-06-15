@@ -61,6 +61,7 @@ test("loads extension, summarizes popup, scans, selects, and previews CSV rows",
 
     const exportPage = await context.newPage();
     await exportPage.goto(`chrome-extension://${extensionId}/export/export.html`);
+    await expect(exportPage.getByRole("link", { name: "Source code" })).toHaveAttribute("href", "https://github.com/LexC/TabPack");
 
     await exportPage.evaluate(async (base) => {
       const extensionChrome = /** @type {any} */ (chrome);

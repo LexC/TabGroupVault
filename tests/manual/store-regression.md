@@ -5,7 +5,9 @@
 - [ ] Confirm README permissions describe optional HTTP/HTTPS host access.
 - [ ] Confirm PRIVACY.md still says exports stay local and mentions asset fetches only for referenced assets.
 - [ ] Confirm Edge and Chrome listing drafts mention runtime page access.
+- [ ] Confirm Edge and Chrome listing drafts include the GitHub support and homepage URLs.
 - [ ] Confirm CHANGELOG.md includes the v1.1 changes.
+- [ ] Confirm generated screenshots and promotional images are current after UI or listing changes.
 
 ## Packaging
 
@@ -14,6 +16,7 @@
 - [ ] Confirm `storage` is included in permissions.
 - [ ] Confirm no remote scripts, inline scripts, or inline styles were added.
 - [ ] Confirm icons are present and PNG signatures validate.
+- [ ] Confirm `extension/manifest.json` includes `homepage_url`.
 
 ## Repository Review
 

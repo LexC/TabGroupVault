@@ -21,7 +21,7 @@
     "extension/**/*.js",
     "scripts/**/*.mjs",
     "tests/**/*.js",
-    "types/**/*.d.ts"
+    "extension/**/*.d.ts"
   ],
   "exclude": [
     "node_modules",

@@ -25,3 +25,11 @@ Productivity, Developer Tools, Workflow and Planning
 TabPack needs tab, tab group, scripting, and storage permissions to inspect grouped tabs, serialize open pages, and remember settings. MHTML capture, Downloads fallback, and HTTP/HTTPS host access are requested at runtime only when the selected export mode needs them.
 
 Exports stay on the user's device.
+
+## Support URL
+
+https://github.com/LexC/TabPack/issues
+
+## Homepage URL
+
+https://github.com/LexC/TabPack

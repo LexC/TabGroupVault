@@ -9,8 +9,9 @@
     "typecheck": "tsc --noEmit",
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit": "node --test tests/unit/*.test.js",
-    "test:e2e": "playwright test tests/e2e",
+    "test:e2e": "node scripts/run-playwright-tests.mjs",
     "validate": "node scripts/validate-extension.mjs",
+    "capture:store-assets": "node scripts/capture-store-assets.mjs",
     "build:edge": "node scripts/build-zip.mjs edge",
     "build:chrome": "node scripts/build-zip.mjs chrome",
     "build": "node scripts/build-zip.mjs all"

@@ -19,7 +19,7 @@ except ModuleNotFoundError:
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SOURCE = REPO_ROOT / "extension" / "assets" / "icons" / "iconMain.png"
+DEFAULT_SOURCE = REPO_ROOT / "scripts" / "assets" / "iconMain.png"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "extension" / "assets" / "icons"
 ICON_SIZES = (16, 32, 48, 128)
 

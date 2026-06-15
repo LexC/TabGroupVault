@@ -295,36 +295,6 @@ function serializeCompleteHtmlInPage(options) {
     }
   }
 
-  function removeUploadFromMobileOption() {
-    const removableSelectors = [
-      "button",
-      "a",
-      "li",
-      "[role='button']",
-      "[role='menuitem']",
-      "[role='option']",
-      "[aria-label]",
-      "[title]"
-    ].join(",");
-
-    for (const element of Array.from(clone.querySelectorAll(removableSelectors))) {
-      const visibleText = normalizeControlText(element.textContent);
-      const ariaLabel = normalizeControlText(element.getAttribute("aria-label"));
-      const title = normalizeControlText(element.getAttribute("title"));
-
-      if (visibleText === "upload from mobile" ||
-        ariaLabel === "upload from mobile" ||
-        title === "upload from mobile") {
-        element.remove();
-      }
-    }
-  }
-
-  function normalizeControlText(value) {
-    return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
-  }
-
-  removeUploadFromMobileOption();
   clone.querySelectorAll("base").forEach((element) => element.remove());
 
   rewriteUrlAttribute("img[src]", "src", "image");

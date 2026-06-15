@@ -15,8 +15,8 @@ audience and update them in the same change that changes behavior.
 - `docs/store/`: store listing text and store asset preparation notes.
 - Code comments: browser constraints, security/privacy decisions, fallback
   behavior, data ownership, and non-obvious failure handling.
-- `types/tabpack-globals.d.ts`: cross-file runtime shapes for plain-script
-  modules and `@ts-check`.
+- `extension/types/tabpack-globals.d.ts`: cross-file runtime shapes for
+  plain-script modules and `@ts-check`.
 
 ## Code Comment Style
 
@@ -50,5 +50,5 @@ When behavior changes, update the closest docs:
 - Developer docs describe the current module boundaries and script load order.
 - Comments explain intent or constraints, not obvious mechanics.
 - New public globals or shared data shapes are reflected in
-  `types/tabpack-globals.d.ts`.
+  `extension/types/tabpack-globals.d.ts`.
 - Validation and typecheck commands still cover the documented files.

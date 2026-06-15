@@ -2,7 +2,7 @@
 
 Run these files for store-release confidence after automated tests pass.
 
-- `setup-and-release.md`: unpacked install, validation, build, ZIP inspection.
+- `setup-and-release.md`: unpacked install, validation, store assets, build, ZIP inspection.
 - `selection.md`: scan preview, selected-by-default behavior, compact numbering.
 - `export-modes.md`: HTML, asset, MHTML, optional CSV report, and filename behavior.
 - `destinations-and-conflicts.md`: output controls, selected folder, Downloads fallback, overwrite, uniquify.

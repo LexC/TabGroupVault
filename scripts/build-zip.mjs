@@ -57,9 +57,14 @@ function collectFiles(directory, baseDirectory = directory) {
       continue;
     }
 
+    const zipPath = path.relative(baseDirectory, absolutePath).replaceAll(path.sep, "/");
+    if (isSourceOnlyExtensionFile(zipPath)) {
+      continue;
+    }
+
     entries.push({
       absolutePath,
-      zipPath: path.relative(baseDirectory, absolutePath).replaceAll(path.sep, "/"),
+      zipPath,
       data: readFileSync(absolutePath),
       mode: 0o100644,
       mtime: stats.mtime
@@ -67,6 +72,10 @@ function collectFiles(directory, baseDirectory = directory) {
   }
 
   return entries;
+}
+
+function isSourceOnlyExtensionFile(zipPath) {
+  return zipPath.endsWith(".d.ts");
 }
 
 function makeZip(entries) {

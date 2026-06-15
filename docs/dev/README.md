@@ -26,5 +26,6 @@ npm run validate
 Before release packaging:
 
 ```text
-TMPDIR=/tmp TMP=/tmp TEMP=/tmp npm run check
+npm run check
+npm run capture:store-assets
 ```

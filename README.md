@@ -4,6 +4,8 @@
 
 TabPack is a free and open-source Chromium browser extension for exporting the tab groups in your current window. It turns each browser tab group into a folder, then saves grouped HTTP/HTTPS tabs as HTML snapshots, HTML asset folders, MHTML archives, or a CSV index.
 
+Repository: [github.com/LexC/TabPack](https://github.com/LexC/TabPack)
+
 It is built for people who use tab groups as working sets: research sessions, project references, reading queues, investigations, documentation trails, and anything else worth keeping outside the browser.
 
 ## Highlights
@@ -216,6 +218,7 @@ extension/
   popup/
   export/
   shared/
+  types/
   assets/icons/
 docs/store/
 scripts/
@@ -241,6 +244,12 @@ Build release ZIPs:
 npm run build
 ```
 
+Capture store screenshots and promotional images:
+
+```text
+npm run capture:store-assets
+```
+
 Run the full release gate:
 
 ```text
@@ -249,7 +258,7 @@ npm run check
 
 `npm run build:edge` writes `dist/tabpack-edge-<version>.zip`. `npm run build:chrome` writes `dist/tabpack-chrome-<version>.zip`. Generated ZIP files are ignored by git.
 
-Store ZIPs contain the contents of `extension/` at the ZIP root, with `manifest.json` directly inside the archive. The release gate checks version alignment, required scripts, CI wiring, ignored generated artifacts, removed report artifacts, and package entries before writing ZIPs.
+Store ZIPs contain the runtime contents of `extension/` at the ZIP root, with `manifest.json` directly inside the archive. Source-only artwork lives in `scripts/assets/`, and type declarations live in `extension/types/`; neither is packaged. The release gate checks version alignment, required scripts, CI wiring, ignored generated artifacts, removed report artifacts, and package entries before writing ZIPs.
 
 See [docs/dev/](docs/dev/) for the runtime architecture, documentation guide, coding conventions, and WSL test notes.
 

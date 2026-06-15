@@ -9,6 +9,10 @@ const extensionDir = path.join(repoRoot, "extension");
 const changelogPath = path.join(repoRoot, "CHANGELOG.md");
 const ciWorkflowPath = path.join(repoRoot, ".github", "workflows", "ci.yml");
 const gitignorePath = path.join(repoRoot, ".gitignore");
+const packageLockPath = path.join(repoRoot, "package-lock.json");
+const sourceIconPath = path.join(repoRoot, "scripts", "assets", "iconMain.png");
+const extensionTypesPath = path.join(extensionDir, "types", "tabpack-globals.d.ts");
+const repositoryUrl = "https://github.com/LexC/TabPack";
 
 const expectedFiles = [
   "manifest.json",
@@ -47,12 +51,42 @@ const requiredPackageScripts = [
   "test:unit",
   "test:e2e",
   "validate",
+  "capture:store-assets",
   "build",
   "build:edge",
   "build:chrome"
 ];
 
+const requiredStoreImages = [
+  {
+    relativePath: "docs/store/screenshots/popup-summary.png",
+    width: 360,
+    height: 280
+  },
+  {
+    relativePath: "docs/store/screenshots/export-preview.png",
+    width: 1280,
+    height: 900
+  },
+  {
+    relativePath: "docs/store/screenshots/csv-report-preview.png",
+    width: 1280,
+    height: 900
+  },
+  {
+    relativePath: "docs/store/promo-images/promo-440x280.png",
+    width: 440,
+    height: 280
+  },
+  {
+    relativePath: "docs/store/promo-images/promo-1400x560.png",
+    width: 1400,
+    height: 560
+  }
+];
+
 const requiredCiCommands = [
+  "npm ci",
   "npm run check"
 ];
 
@@ -78,6 +112,10 @@ const forbiddenReleaseReferences = [
   ["EXPORT", "REPORT", "FILE", "NAME"].join("_"),
   ["generate", "Export", "Report"].join("")
 ];
+
+const forbiddenPackageEntries = new Set([
+  "assets/icons/iconMain.png"
+]);
 
 const textFileExtensions = new Set([
   ".css",
@@ -122,7 +160,9 @@ export function validateExtension() {
   }
 
   validateReleaseMetadata(manifest, errors);
+  validateRepositoryMetadata(manifest, errors);
   validatePackageScripts(errors);
+  validatePackageLock(errors);
   validateCiWorkflow(errors);
   validateGitignore(errors);
   validateNoForbiddenReleaseReferences(errors);
@@ -133,10 +173,19 @@ export function validateExtension() {
   validatePngSignature("assets/icons/icon48.png", errors);
   validatePngSignature("assets/icons/icon128.png", errors);
 
+  if (!existsSync(sourceIconPath)) {
+    errors.push("Source icon is missing: scripts/assets/iconMain.png.");
+  }
+
+  if (!existsSync(extensionTypesPath)) {
+    errors.push("Extension type declarations are missing: extension/types/tabpack-globals.d.ts.");
+  }
+
   if (!existsSync(path.join(repoRoot, "dist", "README.md"))) {
     errors.push("dist/README.md is missing.");
   }
 
+  validateStoreImages(errors);
   validatePackageEntries(collectExtensionPackageEntries(), errors);
 
   if (errors.length) {
@@ -194,6 +243,16 @@ function validateReleaseMetadata(manifest, errors) {
   }
 }
 
+function validateRepositoryMetadata(manifest, errors) {
+  if (!manifest) {
+    return;
+  }
+
+  if (manifest.homepage_url !== repositoryUrl) {
+    errors.push(`manifest.json homepage_url must be ${repositoryUrl}.`);
+  }
+}
+
 function validatePackageScripts(errors) {
   const packageJson = readRepoJson("package.json", errors);
   if (!packageJson) {
@@ -204,6 +263,12 @@ function validatePackageScripts(errors) {
     if (!packageJson.scripts?.[scriptName]) {
       errors.push(`package.json is missing required script: ${scriptName}`);
     }
+  }
+}
+
+function validatePackageLock(errors) {
+  if (!existsSync(packageLockPath)) {
+    errors.push("package-lock.json is missing; CI uses npm ci.");
   }
 }
 
@@ -380,10 +445,17 @@ function collectExtensionPackageEntries(directory = extensionDir, baseDirectory 
       continue;
     }
 
-    entries.push(path.relative(baseDirectory, absolutePath).replaceAll(path.sep, "/"));
+    const packagePath = path.relative(baseDirectory, absolutePath).replaceAll(path.sep, "/");
+    if (!isSourceOnlyExtensionFile(packagePath)) {
+      entries.push(packagePath);
+    }
   }
 
   return entries;
+}
+
+function isSourceOnlyExtensionFile(packagePath) {
+  return packagePath.endsWith(".d.ts");
 }
 
 export function validatePackageEntries(entries, errors = []) {
@@ -401,8 +473,16 @@ export function validatePackageEntries(entries, errors = []) {
       errors.push(`Source map should not be packaged: ${entry}`);
     }
 
+    if (entry.endsWith(".d.ts")) {
+      errors.push(`Type declaration should not be packaged: ${entry}`);
+    }
+
     if (entry.includes("__tests__") || entry.includes(".test.")) {
       errors.push(`Test file should not be packaged: ${entry}`);
+    }
+
+    if (forbiddenPackageEntries.has(entry)) {
+      errors.push(`Source-only asset should not be packaged: ${entry}`);
     }
 
     for (const forbiddenReference of forbiddenReleaseReferences) {
@@ -430,6 +510,28 @@ function validatePngSignature(relativePath, errors) {
   const signature = readFileSync(absolutePath).subarray(0, 8);
   if (signature.toString("hex") !== "89504e470d0a1a0a") {
     errors.push(`Icon is not a PNG file: extension/${relativePath}`);
+  }
+}
+
+function validateStoreImages(errors) {
+  for (const image of requiredStoreImages) {
+    const absolutePath = path.join(repoRoot, image.relativePath);
+    if (!existsSync(absolutePath)) {
+      errors.push(`Missing generated store image: ${image.relativePath}. Run npm run capture:store-assets.`);
+      continue;
+    }
+
+    const data = readFileSync(absolutePath);
+    if (data.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") {
+      errors.push(`Store image is not a PNG file: ${image.relativePath}`);
+      continue;
+    }
+
+    const width = data.readUInt32BE(16);
+    const height = data.readUInt32BE(20);
+    if (width !== image.width || height !== image.height) {
+      errors.push(`Store image has unexpected dimensions: ${image.relativePath} is ${width}x${height}, expected ${image.width}x${image.height}.`);
+    }
   }
 }
 
